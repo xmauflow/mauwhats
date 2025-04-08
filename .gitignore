@@ -9,7 +9,7 @@ yarn-error.log
 .env.development
 .env.local
 .env.*.local
-sesion/*
+session/*
 !.vscode
 !.idea
 package-lock.json
