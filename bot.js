@@ -2,7 +2,9 @@ import { makeWASocket, useMultiFileAuthState, DisconnectReason } from "@whiskeys
 import pino from "pino";
 import fs from "fs";
 import mongodb from "./database.js";
-import anonymousChat from './modules/menu.js';
+import config from "./config.js";
+import anonymousChat from "./modules/menu.js";
+import advertise from "./modules/advertise.js";
 
 async function connectToWhatsApp() {
     try {
@@ -63,39 +65,59 @@ async function connectToWhatsApp() {
                 try {
                     await mongodb.connect();
                     console.log('[Success] Connected to MongoDB database.');
+                    
+                    // Initialize anonymous chat collections
+                    await anonymousChat.initializeCollections();
                 } catch (error) {
-                    console.error('[Error] MongoDB connection failed:', error.message);
+                    console.error('[Warning] MongoDB connection failed:', error.message);
+                    console.error('[Error Details]:', error);
                 }
             }
         });
 
-        // Add message handler to process commands and relay messages
+        // Listen for credentials updates
+        bot.ev.on("creds.update", saveCreds);
+        
+        // Handle incoming messages
         bot.ev.on('messages.upsert', async ({ messages }) => {
+            if (!messages || !messages[0]) return;
+            
             const msg = messages[0];
             if (!msg.message) return; // Not a message
             
             // Skip if message is from status broadcast
             if (msg.key.remoteJid === 'status@broadcast') return;
             
+            // Skip if message is from me
+            if (msg.key.fromMe) return;
+            
             // Get sender ID
             const sender = msg.key.remoteJid;
             
-            // Check if this is a command
+            // Extract message body
             const body = msg.message.conversation || 
                         msg.message.extendedTextMessage?.text || 
                         msg.message.imageMessage?.caption || 
                         msg.message.videoMessage?.caption || '';
             
+            console.log(`[Message] From ${sender}: ${body.substring(0, 50)}${body.length > 50 ? '...' : ''}`);
+            
             // Process commands
             if (body.startsWith(config.prefix)) {
                 const command = body.slice(config.prefix.length).trim().split(' ')[0];
+                
+                console.log(`[Command] ${command} from ${sender}`);
                 
                 // Try to process as anonymous chat command
                 const handled = await anonymousChat.processCommand(bot, msg, command, sender);
                 
                 if (handled) return; // Command was handled by anonymous chat module
                 
-                // Handle other commands here...
+                // Handle other commands here
+                if (command.toLowerCase() === 'menu' || command.toLowerCase() === 'help') {
+                    await advertise.sendAnonymousChatAd(bot, sender);
+                    return;
+                }
             } else {
                 // Try to relay message if not a command
                 const relayed = await anonymousChat.relayMessage(bot, msg, sender);
@@ -105,8 +127,6 @@ async function connectToWhatsApp() {
                 // Handle other non-command messages here...
             }
         });
-        // Listen for credentials updates
-        bot.ev.on("creds.update", saveCreds);
         
         // Handle errors globally
         bot.ev.on('error', (err) => {

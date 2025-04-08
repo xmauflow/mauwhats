@@ -7,7 +7,7 @@ import database from '../database.js';
 import config from '../config.js';
 
 // Collection name for anonymous chat users
-const COLLECTION_NAME = 'anonymous_chat';
+const COLLECTION_NAME = config.anonymousChat?.collection || 'anonymous_chat';
 
 /**
  * Initialize the anonymous chat collections

@@ -45,6 +45,13 @@ const config = {
         url: process.env.MONGODB_URI,
         name: process.env.DB_NAME,
     },
+
+    // Anonymous chat settings
+    anonymousChat: {
+        enabled: true,
+        cooldown: 60000,  // 1 minute cooldown between searches
+        collection: 'anonymous_chat',
+    },
     
     // Konfigurasi Pesan
     message: {
