@@ -36,6 +36,61 @@ class Database {
         return this.db.collection(name);
     }
 
+    // Add this to your Database class methods
+
+    /**
+     * Add a message to the queue for delivery when bot is back online
+     * @param {Object} message - Message object to be delivered
+     */
+    async addToMessageQueue(message) {
+        try {
+            return await this.collection('message_queue').insertOne(message);
+        } catch (error) {
+            console.error('Error adding message to queue:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get all pending messages from the queue
+     */
+    async getPendingMessages() {
+        try {
+            return await this.collection('message_queue').find({}).toArray();
+        } catch (error) {
+            console.error('Error getting pending messages:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Remove a message from the queue after delivery
+     * @param {String} messageId - ID of the message to remove
+     */
+    async removeFromMessageQueue(messageId) {
+        try {
+            return await this.collection('message_queue').deleteOne({ _id: messageId });
+        } catch (error) {
+            console.error('Error removing message from queue:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Clear all delivered messages from the queue
+     * @param {Array} messageIds - Array of message IDs to remove
+     */
+    async clearDeliveredMessages(messageIds) {
+        try {
+            return await this.collection('message_queue').deleteMany({ 
+                _id: { $in: messageIds } 
+            });
+        } catch (error) {
+            console.error('Error clearing delivered messages:', error);
+            throw error;
+        }
+    }
+
     async findOne(collectionName, query) {
         try {
             return await this.collection(collectionName).findOne(query);
@@ -77,6 +132,15 @@ class Database {
             return await this.collection(collectionName).deleteOne(filter);
         } catch (error) {
             console.error(`Error in deleteOne (${collectionName}):`, error);
+            throw error;
+        }
+    }
+
+    async updateMany(collectionName, filter, update) {
+        try {
+            return await this.collection(collectionName).updateMany(filter, update);
+        } catch (error) {
+            console.error(`Error in updateMany (${collectionName}):`, error);
             throw error;
         }
     }

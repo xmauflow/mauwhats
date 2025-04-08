@@ -98,14 +98,9 @@ async function connectToWhatsApp() {
         bot.ev.on("connection.update", async (update) => {
             const { connection, lastDisconnect } = update;
             
-            if (connection === "close") {
-                const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-                console.log('[Status] Connection closed due to:', lastDisconnect?.error?.message);
-                if (shouldReconnect) {
-                    console.log('[Info] Attempting to reconnect...');
-                    setTimeout(connectToWhatsApp, 3000);
-                }
-            } else if (connection === "open") {
+            // ... existing code ...
+            
+            if (connection === "open") {
                 console.log('[Success] Connected to WhatsApp!');
                 console.log(`[Info] Using number: ${bot.user.id.split(":")[0]}`);
                 
@@ -113,6 +108,9 @@ async function connectToWhatsApp() {
                     await mongodb.connect();
                     console.log('[Success] Connected to MongoDB database.');
                     await anonymousChat.initializeCollections();
+                    
+                    // Process any pending messages in the queue
+                    await anonymousChat.processMessageQueue(bot);
                 } catch (error) {
                     console.error('[Warning] MongoDB connection failed:', error.message);
                 }
