@@ -36,6 +36,7 @@ async function initializeCollections() {
         // Create the collections if they don't exist
         await database.collection(COLLECTION_NAME);
         await database.collection('message_queue');
+        await database.collection('offline_messages');
         console.log('[AnonymousChat] Collections initialized');
         
         // Set up periodic cleanup of recent partners (every hour)

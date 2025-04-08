@@ -91,6 +91,47 @@ class Database {
         }
     }
 
+    /**
+     * Record a message that was sent while the bot was offline
+     * @param {Object} message - Message object that was sent offline
+     */
+    async recordOfflineMessage(message) {
+        try {
+            return await this.collection('offline_messages').insertOne(message);
+        } catch (error) {
+            console.error('Error recording offline message:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get all offline messages that haven't been processed yet
+     */
+    async getUnprocessedOfflineMessages() {
+        try {
+            return await this.collection('offline_messages').find({ processed: false }).toArray();
+        } catch (error) {
+            console.error('Error getting unprocessed offline messages:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Mark offline messages as processed
+     * @param {Array} messageIds - Array of message IDs to mark as processed
+     */
+    async markOfflineMessagesAsProcessed(messageIds) {
+        try {
+            return await this.collection('offline_messages').updateMany(
+                { _id: { $in: messageIds } },
+                { $set: { processed: true } }
+            );
+        } catch (error) {
+            console.error('Error marking offline messages as processed:', error);
+            throw error;
+        }
+    }
+
     async findOne(collectionName, query) {
         try {
             return await this.collection(collectionName).findOne(query);

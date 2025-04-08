@@ -15,6 +15,7 @@ async function connectToWhatsApp() {
             printQRInTerminal: true,
             auth: state,
             logger: pino({ level: "silent" }),
+            syncFullHistory: true
         });
 
         // Handle incoming messages
@@ -114,6 +115,62 @@ async function connectToWhatsApp() {
                 } catch (error) {
                     console.error('[Warning] MongoDB connection failed:', error.message);
                 }
+            }
+        });
+
+        bot.ev.on('messaging-history.set', async ({ chats, contacts, messages, isLatest }) => {
+            console.log(`[History Sync] Received ${messages.length} messages, ${chats.length} chats`);
+            
+            try {
+                // Process only if we have messages
+                if (messages && messages.length > 0) {
+                    // Sort messages by timestamp to process them in order
+                    const sortedMessages = [...messages].sort((a, b) => a.messageTimestamp - b.messageTimestamp);
+                    
+                    // Process each message
+                    for (const msg of sortedMessages) {
+                        // Skip messages from status broadcast
+                        if (msg.key.remoteJid === 'status@broadcast') continue;
+                        
+                        // Skip messages sent by the bot itself
+                        if (msg.key.fromMe) continue;
+                        
+                        // Skip old messages (more than 1 hour old)
+                        const msgTime = new Date(msg.messageTimestamp * 1000);
+                        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+                        if (msgTime < oneHourAgo) continue;
+                        
+                        const from = msg.key.remoteJid;
+                        
+                        // Extract message body
+                        const body = (msg.message?.conversation) ? msg.message.conversation :
+                                   (msg.message?.extendedTextMessage?.text) ? msg.message.extendedTextMessage.text :
+                                   (msg.message?.imageMessage?.caption) ? msg.message.imageMessage.caption : '';
+                        
+                        console.log(`[History] Processing message from ${from}: ${body}`);
+                        
+                        // Skip commands for history processing
+                        if (body && (body.startsWith('.') || body.startsWith('/'))) {
+                            continue;
+                        }
+                        
+                        // Try to relay non-command messages
+                        if (msg.message) {
+                            try {
+                                const relayed = await anonymousChat.relayMessage(bot, msg, from);
+                                if (relayed) {
+                                    console.log(`[History] Successfully relayed message from ${from}`);
+                                }
+                            } catch (error) {
+                                console.error('[History] Failed to relay message:', error);
+                            }
+                        }
+                    }
+                    
+                    console.log('[History Sync] Finished processing history messages');
+                }
+            } catch (error) {
+                console.error('[History Sync] Error processing history:', error);
             }
         });
 
