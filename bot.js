@@ -13,10 +13,8 @@ async function connectToWhatsApp() {
         const bot = makeWASocket({
             printQRInTerminal: true,
             auth: state,
-            logger: pino({ level: "silent" }).child({ level: "silent" }),
-            connectTimeoutMs: 60000, // Increase timeout to 60 seconds
-            defaultQueryTimeoutMs: 60000, // Increase query timeout
-            keepAliveIntervalMs: 10000, // Keep alive every 10 seconds
+            logger: pino({ level: "silent" }),
+            browser: ["MauWhats Bot", "Chrome", "1.0.0"],
         });
 
         bot.ev.on("connection.update", async (update) => {
@@ -108,23 +106,32 @@ async function connectToWhatsApp() {
                 
                 console.log(`[Command] ${command} from ${sender}`);
                 
-                // Try to process as anonymous chat command
-                const handled = await anonymousChat.processCommand(bot, msg, command, sender);
-                
-                if (handled) return; // Command was handled by anonymous chat module
-                
-                // Handle other commands here
+                // Handle menu command
                 if (command.toLowerCase() === 'menu' || command.toLowerCase() === 'help') {
-                    await advertise.sendAnonymousChatAd(bot, sender);
-                    return;
+                    try {
+                        console.log(`[Bot] Sending menu to ${sender}`);
+                        await advertise.sendAnonymousChatAd(bot, sender);
+                        return;
+                    } catch (error) {
+                        console.error('[Error] Failed to send menu:', error);
+                    }
+                }
+                
+                // Try to process as anonymous chat command
+                try {
+                    const handled = await anonymousChat.processCommand(bot, msg, command, sender);
+                    if (handled) return; // Command was handled by anonymous chat module
+                } catch (error) {
+                    console.error('[Error] Failed to process command:', error);
                 }
             } else {
                 // Try to relay message if not a command
-                const relayed = await anonymousChat.relayMessage(bot, msg, sender);
-                
-                if (relayed) return; // Message was relayed to anonymous chat partner
-                
-                // Handle other non-command messages here...
+                try {
+                    const relayed = await anonymousChat.relayMessage(bot, msg, sender);
+                    if (relayed) return; // Message was relayed to anonymous chat partner
+                } catch (error) {
+                    console.error('[Error] Failed to relay message:', error);
+                }
             }
         });
         

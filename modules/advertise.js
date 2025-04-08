@@ -1,9 +1,14 @@
 /**
+ * Advertisement Module
+ * Handles promotional messages for the bot features
+ */
+
+/**
  * Send advertisement message about the anonymous chat feature
  * @param {Object} bot - The WhatsApp bot instance
  * @param {String} jid - The JID to send the message to
  */
-async function sendAdvertisement(bot, jid) {
+async function sendAnonymousChatAd(bot, jid) {
     const adMessage = `*🔒 Anonymous Chat Bot 🔒*
 
 Chat with random people without revealing your identity!
@@ -22,20 +27,16 @@ Chat with random people without revealing your identity!
 
 Start chatting anonymously now! Type *.search* to begin.`;
 
-    await bot.sendMessage(jid, { 
-        text: adMessage,
-        footer: 'Powered by MauWhats Bot',
-        buttons: [
-            { buttonId: 'search', buttonText: { displayText: '.search' }, type: 1 },
-            { buttonId: 'stop', buttonText: { displayText: '.stop' }, type: 1 }
-        ]
-    });
+    try {
+        await bot.sendMessage(jid, { 
+            text: adMessage
+        });
+        console.log(`[Bot] Sent menu to ${jid}`);
+    } catch (error) {
+        console.error('[Error] Failed to send menu:', error);
+    }
 }
 
-// Add this to the exports
 export default {
-    initializeCollections,
-    processCommand,
-    relayMessage,
-    sendAdvertisement
+    sendAnonymousChatAd
 };
