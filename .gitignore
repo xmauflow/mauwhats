@@ -9,3 +9,6 @@ yarn-error.log
 .env.development
 .env.local
 .env.*.local
+sesion/*
+!.vscode
+!.idea
