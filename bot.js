@@ -1,3 +1,4 @@
+// bot.js
 import { makeWASocket, useMultiFileAuthState, DisconnectReason } from "@whiskeysockets/baileys";
 import pino from "pino";
 import fs from "fs";
@@ -14,128 +15,114 @@ async function connectToWhatsApp() {
             printQRInTerminal: true,
             auth: state,
             logger: pino({ level: "silent" }),
-            browser: ["MauWhats Bot", "Chrome", "1.0.0"],
         });
 
+        // Handle incoming messages
+        bot.ev.on('messages.upsert', async ({ messages, type }) => {
+            if (type !== 'notify') return;
+
+            const msg = messages[0];
+            if (!msg || !msg.message) return;
+
+            // Skip messages from status broadcast
+            if (msg.key.remoteJid === 'status@broadcast') return;
+
+            // Get basic message info
+            const from = msg.key.remoteJid;
+            const body = (msg.message.conversation) ? msg.message.conversation :
+                        (msg.message.extendedTextMessage?.text) ? msg.message.extendedTextMessage.text :
+                        (msg.message.imageMessage?.caption) ? msg.message.imageMessage.caption : '';
+
+            // Log the received message
+            console.log(`[Message] From ${from}: ${body}`);
+
+            // Handle commands
+            if (body) {
+                // Check for both . and / prefix
+                const isCommand = body.startsWith('.') || body.startsWith('/');
+                if (isCommand) {
+                    const command = body.slice(1).trim().split(' ')[0].toLowerCase();
+                    console.log(`[Command] Processing command: ${command}`);
+
+                    try {
+                        // Handle menu command
+                        if (command === 'menu' || command === 'help') {
+                            console.log('[Debug] Sending menu...');
+                            const menuMessage = `*🔒 Anonymous Chat Bot 🔒*\n\n` +
+                                             `Chat with random people without revealing your identity!\n\n` +
+                                             `*Available Commands:*\n` +
+                                             `*.search* - Find a chat partner\n` +
+                                             `*.next* - Skip current partner & find a new one\n` +
+                                             `*.stop* - End the anonymous chat\n` +
+                                             `*.sendpp* - Share your profile picture\n\n` +
+                                             `Start chatting anonymously now! Type *.search* to begin.`;
+
+                            await bot.sendMessage(from, { 
+                                text: menuMessage 
+                            });
+                            console.log('[Debug] Menu sent successfully');
+                            return;
+                        }
+
+                        // Handle anonymous chat commands
+                        if (['search', 'next', 'stop', 'sendpp'].includes(command)) {
+                            console.log(`[Debug] Processing anonymous chat command: ${command}`);
+                            const handled = await anonymousChat.processCommand(bot, msg, command, from);
+                            if (handled) {
+                                console.log(`[Debug] Command ${command} handled successfully`);
+                                return;
+                            }
+                        }
+                    } catch (error) {
+                        console.error('[Error] Failed to process command:', error);
+                        await bot.sendMessage(from, { 
+                            text: '❌ Sorry, there was an error processing your command. Please try again.' 
+                        });
+                    }
+                }
+            }
+
+            if (!body.startsWith('.') && !body.startsWith('/')) {
+                try {
+                    const relayed = await anonymousChat.relayMessage(bot, msg, from);
+                    if (relayed) {
+                        console.log('[Debug] Message relayed successfully');
+                    }
+                } catch (error) {
+                    console.error('[Error] Failed to relay message:', error);
+                }
+            }
+        });
+
+        // Connection handling
         bot.ev.on("connection.update", async (update) => {
             const { connection, lastDisconnect } = update;
             
             if (connection === "close") {
-                const error = lastDisconnect?.error?.output;
-                const statusCode = error?.statusCode;
-                const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-                
-                console.log('\n[Status] Connection closed.');
-                
-                if (statusCode === DisconnectReason.restartRequired) {
-                    console.log('[Info] Restarting connection after QR scan...');
-                } else if (statusCode === DisconnectReason.timedOut) {
-                    console.log('[Error] Connection timeout. Retrying...');
-                } else if (statusCode === 401) {
-                    console.log('[Auth] Unauthorized. Clearing session...');
-                    try {
-                        await fs.promises.rm("session", { recursive: true, force: true });
-                        console.log('[Info] Session cleared successfully.');
-                    } catch (err) {
-                        console.error('[Error] Failed to clear session:', err);
-                    }
-                } else {
-                    console.log('[Info] Disconnected due to:', lastDisconnect?.error?.message);
-                }
-                
+                const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+                console.log('[Status] Connection closed due to:', lastDisconnect?.error?.message);
                 if (shouldReconnect) {
-                    console.log('[Info] Attempting to reconnect...\n');
-                    setTimeout(connectToWhatsApp, 3000); // Wait 3 seconds before reconnecting
-                } else {
-                    console.log('[Info] Connection closed permanently.');
+                    console.log('[Info] Attempting to reconnect...');
+                    setTimeout(connectToWhatsApp, 3000);
                 }
-                return;
-            }
-            
-            if (connection === "connecting") {
-                console.log('[Status] Connecting to WhatsApp...');
-            }
-            
-            if (connection === "open") {
+            } else if (connection === "open") {
                 console.log('[Success] Connected to WhatsApp!');
                 console.log(`[Info] Using number: ${bot.user.id.split(":")[0]}`);
                 
                 try {
                     await mongodb.connect();
                     console.log('[Success] Connected to MongoDB database.');
-                    
-                    // Initialize anonymous chat collections
                     await anonymousChat.initializeCollections();
                 } catch (error) {
                     console.error('[Warning] MongoDB connection failed:', error.message);
-                    console.error('[Error Details]:', error);
                 }
             }
         });
 
-        // Listen for credentials updates
+        // Save credentials when updated
         bot.ev.on("creds.update", saveCreds);
-        
-        // Handle incoming messages
-        bot.ev.on('messages.upsert', async ({ messages }) => {
-            if (!messages || !messages[0]) return;
-            
-            const msg = messages[0];
-            if (!msg.message) return; // Not a message
-            
-            // Skip if message is from status broadcast
-            if (msg.key.remoteJid === 'status@broadcast') return;
-            
-            // Skip if message is from me
-            if (msg.key.fromMe) return;
-            
-            // Get sender ID
-            const sender = msg.key.remoteJid;
-            
-            // Extract message body
-            const body = msg.message.conversation || 
-                        msg.message.extendedTextMessage?.text || 
-                        msg.message.imageMessage?.caption || 
-                        msg.message.videoMessage?.caption || '';
-            
-            console.log(`[Message] From ${sender}: ${body.substring(0, 50)}${body.length > 50 ? '...' : ''}`);
-            
-            // Process commands
-            if (body.startsWith(config.prefix)) {
-                const command = body.slice(config.prefix.length).trim().split(' ')[0];
-                
-                console.log(`[Command] ${command} from ${sender}`);
-                
-                // Handle menu command
-                if (command.toLowerCase() === 'menu' || command.toLowerCase() === 'help') {
-                    try {
-                        console.log(`[Bot] Sending menu to ${sender}`);
-                        await advertise.sendAnonymousChatAd(bot, sender);
-                        return;
-                    } catch (error) {
-                        console.error('[Error] Failed to send menu:', error);
-                    }
-                }
-                
-                // Try to process as anonymous chat command
-                try {
-                    const handled = await anonymousChat.processCommand(bot, msg, command, sender);
-                    if (handled) return; // Command was handled by anonymous chat module
-                } catch (error) {
-                    console.error('[Error] Failed to process command:', error);
-                }
-            } else {
-                // Try to relay message if not a command
-                try {
-                    const relayed = await anonymousChat.relayMessage(bot, msg, sender);
-                    if (relayed) return; // Message was relayed to anonymous chat partner
-                } catch (error) {
-                    console.error('[Error] Failed to relay message:', error);
-                }
-            }
-        });
-        
-        // Handle errors globally
+
+        // Handle errors
         bot.ev.on('error', (err) => {
             console.error('[Error] WebSocket Error:', err);
         });
@@ -143,7 +130,6 @@ async function connectToWhatsApp() {
         return bot;
     } catch (err) {
         console.error('[Fatal Error]:', err);
-        // Wait 5 seconds before retrying
         setTimeout(connectToWhatsApp, 5000);
     }
 }

@@ -2,12 +2,13 @@
  * Anonymous Chat Menu Module
  * Handles commands for anonymous chat functionality
  */
-
+import { downloadMediaMessage } from "@whiskeysockets/baileys";
 import database from '../database.js';
 import config from '../config.js';
 
 // Collection name for anonymous chat users
 const COLLECTION_NAME = config.anonymousChat?.collection || 'anonymous_chat';
+
 
 /**
  * Initialize the anonymous chat collections
@@ -233,8 +234,162 @@ async function relayMessage(bot, msg, sender) {
         // Get the message content
         const messageContent = msg.message;
         
-        // Forward the message to the partner
-        await bot.sendMessage(user.partner, messageContent);
+        // Handle different message types
+        if (messageContent.conversation) {
+            // Text message
+            await bot.sendMessage(user.partner, { 
+                text: messageContent.conversation 
+            });
+        } 
+        else if (messageContent.extendedTextMessage) {
+            // Extended text message
+            await bot.sendMessage(user.partner, { 
+                text: messageContent.extendedTextMessage.text 
+            });
+        }
+        else if (messageContent.imageMessage) {
+            // Image message
+            try {
+                const buffer = await downloadMediaMessage(
+                    msg,
+                    'buffer',
+                    {},
+                    { 
+                        logger: console,
+                        reuploadRequest: bot.updateMediaMessage 
+                    }
+                );
+                
+                await bot.sendMessage(user.partner, { 
+                    image: buffer,
+                    caption: messageContent.imageMessage.caption || ''
+                });
+            } catch (error) {
+                console.error('[Error] Failed to download and relay image:', error);
+                await bot.sendMessage(user.partner, { 
+                    text: '📷 [Your partner sent an image that could not be forwarded]' 
+                });
+            }
+        }
+        else if (messageContent.videoMessage) {
+            // Video message
+            try {
+                const buffer = await downloadMediaMessage(
+                    msg,
+                    'buffer',
+                    {},
+                    { 
+                        logger: console,
+                        reuploadRequest: bot.updateMediaMessage 
+                    }
+                );
+                
+                await bot.sendMessage(user.partner, { 
+                    video: buffer,
+                    caption: messageContent.videoMessage.caption || ''
+                });
+            } catch (error) {
+                console.error('[Error] Failed to download and relay video:', error);
+                await bot.sendMessage(user.partner, { 
+                    text: '🎥 [Your partner sent a video that could not be forwarded]' 
+                });
+            }
+        }
+        else if (messageContent.audioMessage) {
+            // Audio message
+            try {
+                const buffer = await downloadMediaMessage(
+                    msg,
+                    'buffer',
+                    {},
+                    { 
+                        logger: console,
+                        reuploadRequest: bot.updateMediaMessage 
+                    }
+                );
+                
+                await bot.sendMessage(user.partner, { 
+                    audio: buffer,
+                    mimetype: 'audio/mp4'
+                });
+            } catch (error) {
+                console.error('[Error] Failed to download and relay audio:', error);
+                await bot.sendMessage(user.partner, { 
+                    text: '🔊 [Your partner sent an audio message that could not be forwarded]' 
+                });
+            }
+        }
+        else if (messageContent.stickerMessage) {
+            // Sticker message
+            try {
+                const buffer = await downloadMediaMessage(
+                    msg,
+                    'buffer',
+                    {},
+                    { 
+                        logger: console,
+                        reuploadRequest: bot.updateMediaMessage 
+                    }
+                );
+                
+                await bot.sendMessage(user.partner, { 
+                    sticker: buffer
+                });
+            } catch (error) {
+                console.error('[Error] Failed to download and relay sticker:', error);
+                await bot.sendMessage(user.partner, { 
+                    text: '🎭 [Your partner sent a sticker that could not be forwarded]' 
+                });
+            }
+        }
+        else if (messageContent.documentMessage) {
+            // Document message
+            try {
+                const buffer = await downloadMediaMessage(
+                    msg,
+                    'buffer',
+                    {},
+                    { 
+                        logger: console,
+                        reuploadRequest: bot.updateMediaMessage 
+                    }
+                );
+                
+                await bot.sendMessage(user.partner, { 
+                    document: buffer,
+                    mimetype: messageContent.documentMessage.mimetype,
+                    fileName: messageContent.documentMessage.fileName || 'file'
+                });
+            } catch (error) {
+                console.error('[Error] Failed to download and relay document:', error);
+                await bot.sendMessage(user.partner, { 
+                    text: '📄 [Your partner sent a document that could not be forwarded]' 
+                });
+            }
+        }
+        else if (messageContent.contactMessage || messageContent.contactsArrayMessage) {
+            // Contact message
+            await bot.sendMessage(user.partner, { 
+                text: '👤 [Your partner shared a contact]' 
+            });
+        }
+        else if (messageContent.locationMessage) {
+            // Location message
+            await bot.sendMessage(user.partner, { 
+                location: { 
+                    degreesLatitude: messageContent.locationMessage.degreesLatitude,
+                    degreesLongitude: messageContent.locationMessage.degreesLongitude
+                }
+            });
+        }
+        else {
+            // Unsupported message type
+            console.log('[Debug] Unsupported message type:', Object.keys(messageContent));
+            await bot.sendMessage(user.partner, { 
+                text: '[Your partner sent a message type that cannot be forwarded]' 
+            });
+        }
+        
         return true; // Message relayed
     } catch (error) {
         console.error('[AnonymousChat] Relay error:', error);
@@ -250,21 +405,31 @@ async function relayMessage(bot, msg, sender) {
  * @param {String} sender - The sender's ID
  */
 async function processCommand(bot, msg, command, sender) {
-    switch (command.toLowerCase()) {
-        case 'search':
-            await handleSearch(bot, msg, sender);
-            return true;
-        case 'next':
-            await handleNext(bot, msg, sender);
-            return true;
-        case 'stop':
-            await handleStop(bot, msg, sender);
-            return true;
-        case 'sendpp':
-            await handleSendPP(bot, msg, sender);
-            return true;
-        default:
-            return false;
+    console.log(`[Debug] Processing command: ${command} from ${sender}`);
+    
+    try {
+        switch (command.toLowerCase()) {
+            case 'search':
+                await handleSearch(bot, msg, sender);
+                return true;
+            case 'next':
+                await handleNext(bot, msg, sender);
+                return true;
+            case 'stop':
+                await handleStop(bot, msg, sender);
+                return true;
+            case 'sendpp':
+                await handleSendPP(bot, msg, sender);
+                return true;
+            default:
+                return false;
+        }
+    } catch (error) {
+        console.error(`[Error] Failed to process command ${command}:`, error);
+        await bot.sendMessage(sender, { 
+            text: '❌ An error occurred while processing your command. Please try again.' 
+        });
+        return true;
     }
 }
 
