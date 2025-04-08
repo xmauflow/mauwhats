@@ -1,5 +1,5 @@
 {
-  "name": "wabase",
+  "name": "MauWhats-Api",
   "version": "3.0.0",
   "main": "index.js",
   "type": "module",
@@ -8,14 +8,16 @@
     "dev": "NODE_ENV=development nodemon index.js"
   },
   "keywords": [],
-  "author": "Bayu Mahadika",
+  "author": "MauFlow",
   "license": "ISC",
-  "description": "Script Base WhatsApp Bot",
+  "description": "Simple WhatsApp Bot",
   "devDependencies": {
     "nodemon": "^3.1.9"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "^6.17.16",
+    "dotenv": "^16.4.7",
+    "mongodb": "^6.15.0",
     "qrcode-terminal": "^0.12.0"
   }
 }

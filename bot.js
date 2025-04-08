@@ -1,55 +1,56 @@
-import { makeWASocket, useMultiFileAuthState } from "@whiskeysockets/baileys";
+import { makeWASocket, useMultiFileAuthState, DisconnectReason } from "@whiskeysockets/baileys";
 import pino from "pino";
-import readline from "readline";
 import fs from "fs";
+import mongodb from "./database.js";
 
-function question(text = "question") {
-    return new Promise(resolve => {
-        const rl = readline.createInterface({
-            input: process.stdin,
-            output: process.stdout
-        });
-        rl.question(`\x1b[32;1m?\x1b[0m\x20\x1b[1m${text}\x1b[0m`, answer => {
-            rl.close();
-            resolve(answer);
-        });
-    });
-}
-
-(async function start(usePairingCode = true) {
+(async function start() {
     const session = await useMultiFileAuthState("session");
     const bot = makeWASocket({
-        printQRInTerminal: !usePairingCode,
+        printQRInTerminal: true,  // Always print QR in terminal
         auth: session.state,
         logger: pino({ level: "silent" }).child({ level: "silent" })
     });
-    if (usePairingCode && !bot.user && !bot.authState.creds.registered) {
-      
-      usePairingCode = (await question("Ingin terhubung menggunakan pairing code? [Y/n]: ")).toLowerCase() !== "n";
-      
-      if(!usePairingCode) return start(false);
-      
-        const waNumber = await question("Masukkan nomor WhatsApp Anda: +");
-        const code = await bot.requestPairingCode(waNumber.replace(/\D/g, ""));
-        console.log(`\x1b[44;1m\x20PAIRING CODE\x20\x1b[0m\x20${code}`);
-    }
-    bot.ev.on("connection.update", async ({ connection, lastDisconnect }) => {
+    
+    bot.ev.on("connection.update", async (update) => {
+        const { connection, lastDisconnect } = update;
+        
         if (connection === "close") {
-            console.log(lastDisconnect.error);
-            const { statusCode, error } = lastDisconnect.error.output.payload;
-            if (statusCode === 401 && error === "Unauthorized") {
-                await fs.promises.rm("session", {
-                    recursive: true,
-                    force: true
-                });
+            const shouldReconnect = 
+                (lastDisconnect.error)?.output?.statusCode !== DisconnectReason.loggedOut;
+            
+            // If error is "restartRequired", this is part of normal auth flow
+            if ((lastDisconnect.error)?.output?.statusCode === DisconnectReason.restartRequired) {
+                console.log('Reconnecting after QR scan...');
+            } else {
+                console.log('Connection closed due to ', lastDisconnect.error);
+                
+                // Handle unauthorized error by deleting session
+                if ((lastDisconnect.error)?.output?.statusCode === 401 && 
+                    (lastDisconnect.error)?.output?.payload?.error === "Unauthorized") {
+                    await fs.promises.rm("session", {
+                        recursive: true,
+                        force: true
+                    });
+                }
             }
-            return start();
+            
+            if (shouldReconnect) {
+                start();
+            }
+            return;
         }
+        
         if (connection === "open") {
+            try {
+                await mongodb.connect();
+            } catch (error) {
+                console.error('Error connecting to MongoDB:', error);
+            }
             console.log(
                 "Berhasil terhubung dengan: " + bot.user.id.split(":")[0]
             );
         }
     });
+    
     bot.ev.on("creds.update", session.saveCreds);
 })();
