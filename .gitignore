@@ -12,3 +12,4 @@ yarn-error.log
 sesion/*
 !.vscode
 !.idea
+package-lock.json

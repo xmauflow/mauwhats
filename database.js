@@ -7,7 +7,7 @@ class Database {
         this.db = null;
     }
 
-    async connect(url = config.MONGODB_URI, dbName = config.MONGODB_DB_NAME) {
+    async connect(url = config.db.url, dbName = config.db.name) {
         try {
             this.client = new MongoClient(url);
             await this.client.connect();
