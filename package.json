@@ -1,0 +1,21 @@
+{
+  "name": "wabase",
+  "version": "3.0.0",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "NODE_ENV=development nodemon index.js"
+  },
+  "keywords": [],
+  "author": "Bayu Mahadika",
+  "license": "ISC",
+  "description": "Script Base WhatsApp Bot",
+  "devDependencies": {
+    "nodemon": "^3.1.9"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.17.16",
+    "qrcode-terminal": "^0.12.0"
+  }
+}
