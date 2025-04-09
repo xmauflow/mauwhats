@@ -63,11 +63,18 @@ async function handleSearch(bot, msg, sender) {
     try {
         // Check if user is already in a chat
         const existingUser = await database.findOne(COLLECTION_NAME, { id: sender });
-        if (existingUser && existingUser.partner) {
-            await bot.sendMessage(msg.key.remoteJid, { 
-                text: '❌ You are already in an anonymous chat. Use *.stop* to end your current session first.' 
-            });
-            return;
+        if (existingUser) {
+            if (existingUser.partner) {
+                await bot.sendMessage(msg.key.remoteJid, {
+                    text: 'You are already in an anonymous chat. Use *.stop* to end your current session first.'
+                });
+                return;
+            } else if (existingUser.status === 'waiting') {
+                await bot.sendMessage(msg.key.remoteJid, {
+                    text: 'You are already searching for a partner. Please wait while we find someone for you.'
+                });
+                return;
+            }
         }
 
         // Get or create user record
@@ -75,8 +82,8 @@ async function handleSearch(bot, msg, sender) {
         if (existingUser) {
             userRecord = existingUser;
             // Update status to waiting
-            await database.updateOne(COLLECTION_NAME, { id: sender }, { 
-                $set: { status: 'waiting', lastSearchTime: new Date() } 
+            await database.updateOne(COLLECTION_NAME, { id: sender }, {
+                $set: { status: 'waiting', lastSearchTime: new Date() }
             });
         } else {
             // Create new user record
@@ -103,57 +110,57 @@ async function handleSearch(bot, msg, sender) {
         console.log(`[Debug] User ${sender} has ${currentRecentPartners.length} recent partners to avoid`);
 
         // Find another waiting user that is not in the recent partners list
-        const waitingUser = await database.findOne(COLLECTION_NAME, { 
-            status: 'waiting', 
+        const waitingUser = await database.findOne(COLLECTION_NAME, {
+            status: 'waiting',
             id: { $ne: sender },
             id: { $nin: currentRecentPartners } // Exclude recent partners
         });
 
         if (waitingUser) {
             // Add each other to their recent partners list
-            await database.updateOne(COLLECTION_NAME, { id: sender }, { 
-                $set: { 
-                    status: 'chatting', 
-                    partner: waitingUser.id 
+            await database.updateOne(COLLECTION_NAME, { id: sender }, {
+                $set: {
+                    status: 'chatting',
+                    partner: waitingUser.id
                 },
-                $push: { 
-                    recentPartners: { 
-                        partnerId: waitingUser.id, 
-                        timestamp: new Date() 
-                    } 
+                $push: {
+                    recentPartners: {
+                        partnerId: waitingUser.id,
+                        timestamp: new Date()
+                    }
                 }
             });
-            
-            await database.updateOne(COLLECTION_NAME, { id: waitingUser.id }, { 
-                $set: { 
-                    status: 'chatting', 
-                    partner: sender 
+
+            await database.updateOne(COLLECTION_NAME, { id: waitingUser.id }, {
+                $set: {
+                    status: 'chatting',
+                    partner: sender
                 },
-                $push: { 
-                    recentPartners: { 
-                        partnerId: sender, 
-                        timestamp: new Date() 
-                    } 
+                $push: {
+                    recentPartners: {
+                        partnerId: sender,
+                        timestamp: new Date()
+                    }
                 }
             });
 
             // Notify both users
-            await bot.sendMessage(msg.key.remoteJid, { 
-                text: '✅ *Partner found!*\n\nYou are now connected to a random person. Be respectful and enjoy your conversation.\n\nUse *.next* to find a new partner or *.stop* to end the chat.' 
+            await bot.sendMessage(msg.key.remoteJid, {
+                text: '*Partner found!*\n\nYou are now connected to a random person. Be respectful and enjoy your conversation.\n\nUse *.next* to find a new partner or *.stop* to end the chat.'
             });
-            
-            await bot.sendMessage(waitingUser.id, { 
-                text: '✅ *Partner found!*\n\nYou are now connected to a random person. Be respectful and enjoy your conversation.\n\nUse *.next* to find a new partner or *.stop* to end the chat.' 
+
+            await bot.sendMessage(waitingUser.id, {
+                text: '*Partner found!*\n\nYou are now connected to a random person. Be respectful and enjoy your conversation.\n\nUse *.next* to find a new partner or *.stop* to end the chat.'
             });
         } else {
-            await bot.sendMessage(msg.key.remoteJid, { 
-                text: '⏳ *Searching for a partner...*\n\nPlease wait while we find someone for you to chat with. You will be notified when a partner is found.\n\nUse *.stop* to cancel the search.' 
+            await bot.sendMessage(msg.key.remoteJid, {
+                text: '*Searching for a partner...*\n\nPlease wait while we find someone for you to chat with. You will be notified when a partner is found.\n\nUse *.stop* to cancel the search.'
             });
         }
     } catch (error) {
         console.error('[AnonymousChat] Search error:', error);
-        await bot.sendMessage(msg.key.remoteJid, { 
-            text: '❌ An error occurred while searching for a partner. Please try again later.' 
+        await bot.sendMessage(msg.key.remoteJid, {
+            text: 'An error occurred while searching for a partner. Please try again later.'
         });
     }
 }
