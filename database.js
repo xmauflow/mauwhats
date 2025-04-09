@@ -56,10 +56,15 @@ class Database {
      */
     async getPendingMessages() {
         try {
-            return await this.collection('message_queue').find({}).toArray();
+            return await this.collection('message_queue').find({
+                $or: [
+                    { status: 'pending' },
+                    { status: 'failed', retries: { $lt: 3 } }
+                ]
+            }).toArray();
         } catch (error) {
             console.error('Error getting pending messages:', error);
-            throw error;
+            return [];
         }
     }
 
@@ -150,11 +155,16 @@ class Database {
         }
     }
 
+    /**
+     * Insert a document into a collection
+     * @param {String} collectionName - Name of the collection
+     * @param {Object} document - Document to insert
+     */
     async insertOne(collectionName, document) {
         try {
             return await this.collection(collectionName).insertOne(document);
         } catch (error) {
-            console.error(`Error in insertOne (${collectionName}):`, error);
+            console.error(`Error inserting document into ${collectionName}:`, error);
             throw error;
         }
     }

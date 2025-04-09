@@ -108,8 +108,8 @@ async function connectToWhatsApp() {
             }
         });
 
-         // Handle connection updates
-         bot.ev.on("connection.update", async (update) => {
+        // Handle connection updates
+        bot.ev.on("connection.update", async (update) => {
             const { connection, lastDisconnect } = update;
             
             if (connection === "close") {
@@ -129,8 +129,8 @@ async function connectToWhatsApp() {
                     console.log('[Success] Connected to MongoDB database.');
                     await anonymousChat.initializeCollections();
                     
-                    // Request full history sync
-                    await bot.requestMessageHistory();
+                    // Process any pending messages in the queue
+                    await anonymousChat.processMessageQueue(bot);
                 } catch (error) {
                     console.error('[Warning] MongoDB connection failed:', error.message);
                 }
