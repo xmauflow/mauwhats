@@ -5,6 +5,7 @@
 import { downloadMediaMessage } from "@whiskeysockets/baileys";
 import database from '../database.js';
 import config from '../config.js';
+import { checkIsAdmin } from './admin.js';
 
 // Collection name for anonymous chat users
 const COLLECTION_NAME = config.anonymousChat?.collection || 'anonymous_chat';
