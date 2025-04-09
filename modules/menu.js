@@ -5,6 +5,7 @@
 import { downloadMediaMessage } from "@whiskeysockets/baileys";
 import database from '../database.js';
 import config from '../config.js';
+import AdvertiseManager from './advertise.js';
 import { checkIsAdmin } from './admin.js';
 
 // Collection name for anonymous chat users
@@ -746,7 +747,7 @@ async function processCommand(bot, msg, sender) {
     const command = msg.body.toLowerCase();
     
     // Check if user is admin (you need to implement this check)
-    const isAdmin = await checkIsAdmin(sender);
+    const isAdmin = await checkIsAdmin(bot, sender);
     
     if (isAdmin) {
         if (command.startsWith('.addad')) {
