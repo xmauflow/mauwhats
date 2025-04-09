@@ -5,7 +5,7 @@ import fs from "fs";
 import mongodb from "./database.js";
 import config from "./config.js";
 import anonymousChat from "./modules/menu.js";
-import advertise from "./modules/advertise.js";
+import AdvertiseManager from "./modules/advertise.js";
 
 
 async function connectToWhatsApp() {
@@ -128,6 +128,10 @@ async function connectToWhatsApp() {
                     await mongodb.connect();
                     console.log('[Success] Connected to MongoDB database.');
                     await anonymousChat.initializeCollections();
+
+                    // Initialize advertise collection
+                    console.log('[Info] Initializing advertise collection...');
+                    await AdvertiseManager.initializeCollection();
                     
                     // Process any pending messages in the queue
                     await anonymousChat.processMessageQueue(bot);
@@ -204,22 +208,6 @@ async function connectToWhatsApp() {
     } catch (err) {
         console.error('[Fatal Error]:', err);
         setTimeout(connectToWhatsApp, 5000);
-    }
-}
-
-async function requestMessageHistory(bot) {
-    try {
-        // Request history for all chats
-        const chats = await bot.store.chats.all();
-        for (const chat of chats) {
-            try {
-                await bot.requestMessageHistory(chat.id, 100); // Request last 100 messages
-            } catch (error) {
-                console.error(`[History] Failed to request history for ${chat.id}:`, error);
-            }
-        }
-    } catch (error) {
-        console.error('[History] Failed to request message history:', error);
     }
 }
 

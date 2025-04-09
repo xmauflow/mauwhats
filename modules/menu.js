@@ -144,6 +144,8 @@ async function handleSearch(bot, msg, sender) {
                 }
             });
 
+            await AdvertiseManager.sendAdvertisement(bot, sender, 'search');
+
             // Notify both users
             await bot.sendMessage(msg.key.remoteJid, {
                 text: '*Partner found!*\n\nYou are now connected to a random person. Be respectful and enjoy your conversation.\n\nUse *.next* to find a new partner or *.stop* to end the chat.'
@@ -241,6 +243,7 @@ async function handleStop(bot, msg, sender) {
         await bot.sendMessage(msg.key.remoteJid, { 
             text: '✅ You have successfully ended the anonymous chat session. Use *.search* to start a new one.' 
         });
+        await AdvertiseManager.sendAdvertisement(bot, sender, 'end');
     } catch (error) {
         console.error('[AnonymousChat] Stop error:', error);
         await bot.sendMessage(msg.key.remoteJid, { 
@@ -738,8 +741,107 @@ async function processMessageQueue(bot) {
  * @param {String} command - The command (without prefix)
  * @param {String} sender - The sender's ID
  */
-async function processCommand(bot, msg, command, sender) {
-    console.log(`[Debug] Processing command: ${command} from ${sender}`);
+async function processCommand(bot, msg, sender) {
+    const command = msg.body.toLowerCase();
+    
+    // Check if user is admin (you need to implement this check)
+    const isAdmin = await checkIsAdmin(sender);
+    
+    if (isAdmin) {
+        if (command.startsWith('.addad')) {
+            // Format: .addad <type> <title> | <content> | <priority> | <days_active>
+            const parts = command.slice(7).split('|').map(p => p.trim());
+            if (parts.length !== 4) {
+                await bot.sendMessage(msg.key.remoteJid, {
+                    text: '❌ Format: .addad <type> <title> | <content> | <priority> | <days_active>'
+                });
+                return;
+            }
+
+            const [typeAndTitle, content, priority, daysActive] = parts;
+            const [type, ...titleParts] = typeAndTitle.split(' ');
+            const title = titleParts.join(' ');
+
+            const now = new Date();
+            const endDate = new Date();
+            endDate.setDate(endDate.getDate() + parseInt(daysActive));
+
+            const adData = {
+                type,
+                title,
+                content,
+                priority: parseInt(priority),
+                active: true,
+                startDate: now,
+                endDate: endDate
+            };
+
+            const success = await AdvertiseManager.addAdvertisement(adData);
+            await bot.sendMessage(msg.key.remoteJid, {
+                text: success ? '✅ Advertisement added successfully!' : '❌ Failed to add advertisement'
+            });
+            return;
+        }
+        
+        if (command === '.listads') {
+            const ads = await AdvertiseManager.listAdvertisements();
+            if (!ads.length) {
+                await bot.sendMessage(msg.key.remoteJid, {
+                    text: '❌ No advertisements found'
+                });
+                return;
+            }
+
+            const adList = ads.map(ad => 
+                `ID: ${ad._id}\n` +
+                `Type: ${ad.type}\n` +
+                `Title: ${ad.title}\n` +
+                `Active: ${ad.active ? 'Yes' : 'No'}\n` +
+                `Priority: ${ad.priority}\n` +
+                `Shows: ${ad.showCount || 0}\n` +
+                `Expires: ${ad.endDate.toLocaleDateString()}\n`
+            ).join('\n---\n');
+
+            await bot.sendMessage(msg.key.remoteJid, {
+                text: `📢 *Advertisement List*\n\n${adList}`
+            });
+            return;
+        }
+
+        if (command.startsWith('.delad')) {
+            const adId = command.slice(7).trim();
+            const success = await AdvertiseManager.deleteAdvertisement(adId);
+            await bot.sendMessage(msg.key.remoteJid, {
+                text: success ? '✅ Advertisement deleted successfully!' : '❌ Failed to delete advertisement'
+            });
+            return;
+        }
+
+        if (command === '.adstats') {
+            const stats = await AdvertiseManager.getStats();
+            if (!stats) {
+                await bot.sendMessage(msg.key.remoteJid, {
+                    text: '❌ Failed to get advertisement statistics'
+                });
+                return;
+            }
+
+            const statsMessage = 
+                `📊 *Advertisement Statistics*\n\n` +
+                `Total Ads: ${stats.total}\n` +
+                `Active Ads: ${stats.active}\n` +
+                `Total Shows: ${stats.totalShows}\n\n` +
+                `*By Type:*\n` +
+                Object.entries(stats.byType)
+                    .map(([type, count]) => `${type}: ${count}`)
+                    .join('\n');
+
+            await bot.sendMessage(msg.key.remoteJid, {
+                text: statsMessage
+            });
+            return;
+        }
+    }
     
     try {
         switch (command.toLowerCase()) {
