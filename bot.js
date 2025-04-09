@@ -79,7 +79,7 @@ async function connectToWhatsApp() {
                         }
 
                         // Handle anonymous chat commands
-                        if (['search', 'next', 'stop', 'sendpp'].includes(command)) {
+                        if (['search', 'next', 'stop', 'sendpp', 'addad', 'listads'].includes(command)) {
                             console.log(`[Debug] Processing anonymous chat command: ${command}`);
                             const handled = await anonymousChat.processCommand(bot, msg, command, from);
                             if (handled) {
