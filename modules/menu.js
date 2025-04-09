@@ -344,34 +344,248 @@ async function relayMessage(bot, msg, sender) {
         
         // Try to deliver the message
         try {
+            // Handle different message types
             if (messageContent.conversation) {
-                // Text message
+                // Simple text message
                 await bot.sendMessage(partnerId, { 
                     text: messageContent.conversation 
                 });
+                return true;
             } 
             else if (messageContent.extendedTextMessage) {
                 // Extended text message
                 await bot.sendMessage(partnerId, { 
                     text: messageContent.extendedTextMessage.text 
                 });
+                return true;
             }
-            // Add other message types as needed
-            
-            return true; // Message delivered successfully
+            else if (messageContent.imageMessage) {
+                // Image message
+                const imageBuffer = await downloadMediaMessage(
+                    msg,
+                    'buffer',
+                    {},
+                    { 
+                        logger: console,
+                        reuploadRequest: bot.updateMediaMessage 
+                    }
+                );
+                
+                await bot.sendMessage(partnerId, { 
+                    image: imageBuffer,
+                    caption: messageContent.imageMessage.caption || '',
+                    mimetype: messageContent.imageMessage.mimetype
+                });
+                return true;
+            }
+            else if (messageContent.videoMessage) {
+                // Video message
+                const videoBuffer = await downloadMediaMessage(
+                    msg,
+                    'buffer',
+                    {},
+                    { 
+                        logger: console,
+                        reuploadRequest: bot.updateMediaMessage 
+                    }
+                );
+                
+                await bot.sendMessage(partnerId, { 
+                    video: videoBuffer,
+                    caption: messageContent.videoMessage.caption || '',
+                    mimetype: messageContent.videoMessage.mimetype
+                });
+                return true;
+            }
+            else if (messageContent.audioMessage) {
+                // Audio/voice message
+                const audioBuffer = await downloadMediaMessage(
+                    msg,
+                    'buffer',
+                    {},
+                    { 
+                        logger: console,
+                        reuploadRequest: bot.updateMediaMessage 
+                    }
+                );
+                
+                await bot.sendMessage(partnerId, { 
+                    audio: audioBuffer,
+                    mimetype: messageContent.audioMessage.mimetype,
+                    ptt: messageContent.audioMessage.ptt || false
+                });
+                return true;
+            }
+            else if (messageContent.stickerMessage) {
+                // Sticker message
+                const stickerBuffer = await downloadMediaMessage(
+                    msg,
+                    'buffer',
+                    {},
+                    { 
+                        logger: console,
+                        reuploadRequest: bot.updateMediaMessage 
+                    }
+                );
+                
+                await bot.sendMessage(partnerId, { 
+                    sticker: stickerBuffer
+                });
+                return true;
+            }
+            else if (messageContent.documentMessage) {
+                // Document message
+                const docBuffer = await downloadMediaMessage(
+                    msg,
+                    'buffer',
+                    {},
+                    { 
+                        logger: console,
+                        reuploadRequest: bot.updateMediaMessage 
+                    }
+                );
+                
+                await bot.sendMessage(partnerId, { 
+                    document: docBuffer,
+                    mimetype: messageContent.documentMessage.mimetype,
+                    fileName: messageContent.documentMessage.fileName || 'document'
+                });
+                return true;
+            }
+            else if (messageContent.contactMessage || messageContent.contactsArrayMessage) {
+                // Contact message
+                if (messageContent.contactMessage) {
+                    await bot.sendMessage(partnerId, { 
+                        contacts: { 
+                            displayName: messageContent.contactMessage.displayName,
+                            contacts: [{ vcard: messageContent.contactMessage.vcard }] 
+                        } 
+                    });
+                } else {
+                    // Multiple contacts
+                    await bot.sendMessage(partnerId, { 
+                        contacts: messageContent.contactsArrayMessage 
+                    });
+                }
+                return true;
+            }
+            else if (messageContent.locationMessage) {
+                // Location message
+                await bot.sendMessage(partnerId, { 
+                    location: { 
+                        degreesLatitude: messageContent.locationMessage.degreesLatitude,
+                        degreesLongitude: messageContent.locationMessage.degreesLongitude
+                    }
+                });
+                return true;
+            }
+            else {
+                console.log('[AnonymousChat] Unsupported message type:', Object.keys(messageContent));
+                
+                // Notify sender that this message type is not supported
+                await bot.sendMessage(sender, {
+                    text: '❗ This message type could not be relayed to your partner.'
+                });
+                return false;
+            }
         } catch (deliveryError) {
             console.error('[AnonymousChat] Message delivery failed:', deliveryError);
             
-            // Queue the message for later delivery
-            if (messageContent.conversation) {
-                return await queueMessageOnFailure(messageContent.conversation, 'text');
-            } 
-            else if (messageContent.extendedTextMessage) {
-                return await queueMessageOnFailure(messageContent.extendedTextMessage.text, 'text');
+            // Queue the message for later delivery based on its type
+            try {
+                if (messageContent.conversation) {
+                    return await queueMessageOnFailure(messageContent.conversation, 'text');
+                } 
+                else if (messageContent.extendedTextMessage) {
+                    return await queueMessageOnFailure(messageContent.extendedTextMessage.text, 'text');
+                }
+                else if (messageContent.imageMessage) {
+                    const imageBuffer = await downloadMediaMessage(
+                        msg,
+                        'buffer',
+                        {},
+                        { 
+                            logger: console,
+                            reuploadRequest: bot.updateMediaMessage 
+                        }
+                    );
+                    return await queueMessageOnFailure(
+                        null, 
+                        'image', 
+                        messageContent.imageMessage.caption || '', 
+                        imageBuffer
+                    );
+                }
+                else if (messageContent.videoMessage) {
+                    const videoBuffer = await downloadMediaMessage(
+                        msg,
+                        'buffer',
+                        {},
+                        { 
+                            logger: console,
+                            reuploadRequest: bot.updateMediaMessage 
+                        }
+                    );
+                    return await queueMessageOnFailure(
+                        null, 
+                        'video', 
+                        messageContent.videoMessage.caption || '', 
+                        videoBuffer
+                    );
+                }
+                else if (messageContent.audioMessage) {
+                    const audioBuffer = await downloadMediaMessage(
+                        msg,
+                        'buffer',
+                        {},
+                        { 
+                            logger: console,
+                            reuploadRequest: bot.updateMediaMessage 
+                        }
+                    );
+                    return await queueMessageOnFailure(null, 'audio', null, audioBuffer);
+                }
+                else if (messageContent.stickerMessage) {
+                    const stickerBuffer = await downloadMediaMessage(
+                        msg,
+                        'buffer',
+                        {},
+                        { 
+                            logger: console,
+                            reuploadRequest: bot.updateMediaMessage 
+                        }
+                    );
+                    return await queueMessageOnFailure(null, 'sticker', null, stickerBuffer);
+                }
+                else if (messageContent.documentMessage) {
+                    const docBuffer = await downloadMediaMessage(
+                        msg,
+                        'buffer',
+                        {},
+                        { 
+                            logger: console,
+                            reuploadRequest: bot.updateMediaMessage 
+                        }
+                    );
+                    return await queueMessageOnFailure(
+                        messageContent.documentMessage.fileName || 'document', 
+                        'document', 
+                        null, 
+                        docBuffer
+                    );
+                }
+                // Other message types are more complex to queue
+                else {
+                    // Notify sender that this message type couldn't be queued
+                    await bot.sendMessage(sender, {
+                        text: '❗ This message type could not be queued for later delivery.'
+                    });
+                    return false;
+                }
+            } catch (queueError) {
+                console.error('[AnonymousChat] Failed to queue message:', queueError);
+                return false;
             }
-            // Add other message types as needed
-            
-            return false;
         }
     } catch (error) {
         console.error('[AnonymousChat] Relay error:', error);
@@ -408,19 +622,54 @@ async function processMessageQueue(bot) {
                     continue;
                 }
                 
-                // Attempt delivery
-                if (queuedMsg.messageType === 'text') {
-                    await bot.sendMessage(queuedMsg.recipient, { 
-                        text: `${queuedMsg.content}\n\n_[This message was delivered after a connection issue]_` 
-                    });
-                } 
-                else if (queuedMsg.messageType === 'image' && queuedMsg.mediaBuffer) {
-                    await bot.sendMessage(queuedMsg.recipient, { 
-                        image: queuedMsg.mediaBuffer,
-                        caption: `${queuedMsg.caption || ''}\n\n_[This message was delivered after a connection issue]_` 
-                    });
+                // Attempt delivery based on message type
+                const deliveryNote = '\n\n_[This message was delivered after a connection issue]_';
+                
+                switch (queuedMsg.messageType) {
+                    case 'text':
+                        await bot.sendMessage(queuedMsg.recipient, { 
+                            text: `${queuedMsg.content}${deliveryNote}` 
+                        });
+                        break;
+                        
+                    case 'image':
+                        await bot.sendMessage(queuedMsg.recipient, { 
+                            image: queuedMsg.mediaBuffer,
+                            caption: queuedMsg.caption ? `${queuedMsg.caption}${deliveryNote}` : deliveryNote
+                        });
+                        break;
+                        
+                    case 'video':
+                        await bot.sendMessage(queuedMsg.recipient, { 
+                            video: queuedMsg.mediaBuffer,
+                            caption: queuedMsg.caption ? `${queuedMsg.caption}${deliveryNote}` : deliveryNote
+                        });
+                        break;
+                        
+                    case 'audio':
+                        await bot.sendMessage(queuedMsg.recipient, { 
+                            audio: queuedMsg.mediaBuffer,
+                            ptt: true // Voice note
+                        });
+                        break;
+                        
+                    case 'sticker':
+                        await bot.sendMessage(queuedMsg.recipient, { 
+                            sticker: queuedMsg.mediaBuffer
+                        });
+                        break;
+                        
+                    case 'document':
+                        await bot.sendMessage(queuedMsg.recipient, { 
+                            document: queuedMsg.mediaBuffer,
+                            fileName: queuedMsg.content || 'document'
+                        });
+                        break;
+                        
+                    default:
+                        console.warn(`[Queue] Unsupported message type: ${queuedMsg.messageType}`);
+                        continue;
                 }
-                // Add other message types as needed
                 
                 // Mark as delivered
                 await database.updateOne('message_queue', 
