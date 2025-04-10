@@ -111,14 +111,31 @@ async function handleSearch(bot, msg, sender) {
 
         console.log(`[Debug] User ${sender} has ${currentRecentPartners.length} recent partners to avoid`);
 
-        // Find another waiting user that is not in the recent partners list
+        // Perbaikan query pencarian partner
         const waitingUser = await database.findOne(COLLECTION_NAME, {
             status: 'waiting',
-            id: { $ne: sender },
-            id: { $nin: currentRecentPartners } // Exclude recent partners
+            id: { 
+                $ne: sender,  // Bukan diri sendiri
+                $nin: currentRecentPartners  // Bukan partner terakhir
+            },
+            partner: null,  // Pastikan tidak memiliki partner
+            lastSearchTime: { $lt: new Date() }  // Prioritaskan yang lebih lama menunggu
         });
 
         if (waitingUser) {
+            // Double check untuk memastikan user masih available
+            const doubleCheck = await database.findOne(COLLECTION_NAME, { 
+                id: waitingUser.id,
+                status: 'waiting',
+                partner: null
+            });
+
+            if (!doubleCheck) {
+                // Partner sudah tidak available, cari lagi
+                await handleSearch(bot, msg, sender);
+                return;
+            }
+
             // Add each other to their recent partners list
             await database.updateOne(COLLECTION_NAME, { id: sender }, {
                 $set: {
