@@ -744,7 +744,15 @@ async function processMessageQueue(bot) {
  * @param {String} sender - The sender's ID
  */
 async function processCommand(bot, msg, sender) {
-    const command = msg.body.toLowerCase();
+    // Ekstrak body dengan aman dari berbagai kemungkinan lokasi
+    const msgBody = msg.body || 
+                  (msg.message?.conversation) || 
+                  (msg.message?.extendedTextMessage?.text) || 
+                  (msg.message?.imageMessage?.caption) || 
+                  '';
+    
+    // Gunakan msgBody yang sudah diekstrak dengan aman
+    const command = msgBody.toLowerCase().trim();
     
     // Check if user is admin (you need to implement this check)
     const isAdmin = await checkIsAdmin(bot, sender);
@@ -754,10 +762,10 @@ async function processCommand(bot, msg, sender) {
             // Format: .addad <type> <title> | <content> | <priority> | <days_active>
             const parts = command.slice(7).split('|').map(p => p.trim());
             if (parts.length !== 4) {
-                await bot.sendMessage(msg.key.remoteJid, {
-                    text: '❌ Format: .addad <type> <title> | <content> | <priority> | <days_active>'
+                await bot.sendMessage(sender, {
+                    text: ' Format: .addad <type> <title> | <content> | <priority> | <days_active>'
                 });
-                return;
+                return true;
             }
 
             const [typeAndTitle, content, priority, daysActive] = parts;
@@ -779,19 +787,19 @@ async function processCommand(bot, msg, sender) {
             };
 
             const success = await AdvertiseManager.addAdvertisement(adData);
-            await bot.sendMessage(msg.key.remoteJid, {
-                text: success ? '✅ Advertisement added successfully!' : '❌ Failed to add advertisement'
+            await bot.sendMessage(sender, {
+                text: success ? ' Advertisement added successfully!' : ' Failed to add advertisement'
             });
-            return;
+            return true;
         }
         
         if (command === '.listads') {
             const ads = await AdvertiseManager.listAdvertisements();
             if (!ads.length) {
-                await bot.sendMessage(msg.key.remoteJid, {
-                    text: '❌ No advertisements found'
+                await bot.sendMessage(sender, {
+                    text: ' No advertisements found'
                 });
-                return;
+                return true;
             }
 
             const adList = ads.map(ad => 
@@ -804,32 +812,32 @@ async function processCommand(bot, msg, sender) {
                 `Expires: ${ad.endDate.toLocaleDateString()}\n`
             ).join('\n---\n');
 
-            await bot.sendMessage(msg.key.remoteJid, {
-                text: `📢 *Advertisement List*\n\n${adList}`
+            await bot.sendMessage(sender, {
+                text: ` *Advertisement List*\n\n${adList}`
             });
-            return;
+            return true;
         }
 
         if (command.startsWith('.delad')) {
             const adId = command.slice(7).trim();
             const success = await AdvertiseManager.deleteAdvertisement(adId);
-            await bot.sendMessage(msg.key.remoteJid, {
-                text: success ? '✅ Advertisement deleted successfully!' : '❌ Failed to delete advertisement'
+            await bot.sendMessage(sender, {
+                text: success ? ' Advertisement deleted successfully!' : ' Failed to delete advertisement'
             });
-            return;
+            return true;
         }
 
         if (command === '.adstats') {
             const stats = await AdvertiseManager.getStats();
             if (!stats) {
-                await bot.sendMessage(msg.key.remoteJid, {
-                    text: '❌ Failed to get advertisement statistics'
+                await bot.sendMessage(sender, {
+                    text: ' Failed to get advertisement statistics'
                 });
-                return;
+                return true;
             }
 
             const statsMessage = 
-                `📊 *Advertisement Statistics*\n\n` +
+                ` *Advertisement Statistics*\n\n` +
                 `Total Ads: ${stats.total}\n` +
                 `Active Ads: ${stats.active}\n` +
                 `Total Shows: ${stats.totalShows}\n\n` +
@@ -838,15 +846,18 @@ async function processCommand(bot, msg, sender) {
                     .map(([type, count]) => `${type}: ${count}`)
                     .join('\n');
 
-            await bot.sendMessage(msg.key.remoteJid, {
+            await bot.sendMessage(sender, {
                 text: statsMessage
             });
-            return;
+            return true;
         }
     }
     
     try {
-        switch (command.toLowerCase()) {
+        // Ekstrak perintah tanpa awalan
+        const cleanCommand = command.startsWith('.') ? command.slice(1) : command;
+        
+        switch (cleanCommand) {
             case 'search':
                 await handleSearch(bot, msg, sender);
                 return true;
@@ -865,12 +876,11 @@ async function processCommand(bot, msg, sender) {
     } catch (error) {
         console.error(`[Error] Failed to process command ${command}:`, error);
         await bot.sendMessage(sender, { 
-            text: '❌ An error occurred while processing your command. Please try again.' 
+            text: ' An error occurred while processing your command. Please try again.' 
         });
         return true;
     }
 }
-
 
 // Export the module functions
 export default {
