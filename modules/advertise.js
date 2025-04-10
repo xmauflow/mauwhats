@@ -115,6 +115,63 @@ class AdvertiseManager {
             return [];
         }
     }
+
+    static async getStats() {
+        try {
+            const now = new Date();
+            const ads = await database.find(ADS_COLLECTION, {});
+            
+            if (!ads || ads.length === 0) {
+                return "No advertisements found.";
+            }
+
+            let stats = "📊 *Advertisement Statistics*\n\n";
+            
+            // Group ads by type
+            const adsByType = {};
+            ads.forEach(ad => {
+                if (!adsByType[ad.type]) {
+                    adsByType[ad.type] = [];
+                }
+                adsByType[ad.type].push(ad);
+            });
+
+            // Generate statistics for each type
+            for (const [type, typeAds] of Object.entries(adsByType)) {
+                stats += `*${type.toUpperCase()}*\n`;
+                stats += `Total Ads: ${typeAds.length}\n`;
+                
+                const activeAds = typeAds.filter(ad => {
+                    if (!ad.startDate || !ad.endDate) return ad.active;
+                    return ad.active && new Date(ad.endDate) >= now;
+                });
+                
+                stats += `Active Ads: ${activeAds.length}\n`;
+                
+                // Calculate total impressions
+                const totalImpressions = typeAds.reduce((sum, ad) => sum + (ad.showCount || 0), 0);
+                stats += `Total Impressions: ${totalImpressions}\n\n`;
+
+                // Show top 3 most shown ads
+                const topAds = typeAds
+                    .sort((a, b) => (b.showCount || 0) - (a.showCount || 0))
+                    .slice(0, 3);
+
+                if (topAds.length > 0) {
+                    stats += "Top Performing Ads:\n";
+                    topAds.forEach((ad, index) => {
+                        stats += `${index + 1}. "${ad.title}" - ${ad.showCount || 0} shows\n`;
+                    });
+                }
+                stats += "\n";
+            }
+
+            return stats;
+        } catch (error) {
+            console.error('[Advertise] Error getting statistics:', error);
+            return "Error retrieving advertisement statistics.";
+        }
+    }
 }
 
 export default AdvertiseManager;
