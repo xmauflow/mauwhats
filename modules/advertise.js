@@ -6,7 +6,6 @@ export const ADS_COLLECTION = 'advertisements';
 class AdvertiseManager {
     static async getAdvertisement(type) {
         try {
-            const collection = database.db.collection(ADS_COLLECTION);
             const now = new Date();
 
             // Dapatkan semua iklan yang sesuai dengan kriteria
@@ -79,7 +78,6 @@ class AdvertiseManager {
 
     static async addAdvertisement(type, title, content, priority = 1, duration = 30) {
         try {
-            const collection = database.db.collection(ADS_COLLECTION);
             const now = new Date();
             const endDate = new Date();
             endDate.setDate(now.getDate() + duration);

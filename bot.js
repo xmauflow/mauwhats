@@ -2,7 +2,7 @@
 import { makeWASocket, useMultiFileAuthState, DisconnectReason } from "@whiskeysockets/baileys";
 import pino from "pino";
 import fs from "fs";
-import mongodb from "./database.js";
+import database from "./database.js";
 import config from "./config.js";
 import anonymousChat from "./modules/menu.js";
 import AdvertiseManager from "./modules/advertise.js";
@@ -135,12 +135,12 @@ async function connectToWhatsApp() {
                 console.log(`[Info] Using number: ${bot.user.id.split(":")[0]}`);
                 
                 try {
-                    await mongodb.connect();
+                    await database.connect();
                     console.log('[Success] Connected to MongoDB database.');
                     await anonymousChat.initializeCollections();
 
                     // Initialize advertise collection
-                    const adsCollection = database.db.collection(ADS_COLLECTION);
+                    await database.collection('advertisements'); // Use the database.collection method instead
                     console.log('[Info] Database and collections initialized');
                     
                     // Process any pending messages in the queue
