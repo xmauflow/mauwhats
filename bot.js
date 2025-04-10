@@ -140,8 +140,8 @@ async function connectToWhatsApp() {
                     await anonymousChat.initializeCollections();
 
                     // Initialize advertise collection
-                    console.log('[Info] Initializing advertise collection...');
-                    await AdvertiseManager.initializeCollection();
+                    const adsCollection = database.db.collection(ADS_COLLECTION);
+                    console.log('[Info] Database and collections initialized');
                     
                     // Process any pending messages in the queue
                     await anonymousChat.processMessageQueue(bot);
