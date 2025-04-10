@@ -7,9 +7,9 @@ class AdvertiseManager {
     static async getAdvertisement(type) {
         try {
             const now = new Date();
-
-            // Dapatkan semua iklan yang sesuai dengan kriteria
-            const ads = await collection.find({
+            
+            // Gunakan database.find langsung
+            const ads = await database.find(ADS_COLLECTION, {
                 type: type,
                 active: true,
                 $or: [
@@ -24,7 +24,7 @@ class AdvertiseManager {
                         ]
                     }
                 ]
-            }).toArray();
+            });
 
             if (!ads || ads.length === 0) {
                 console.log(`[Advertise] No active advertisements found for type: ${type}`);
@@ -43,7 +43,8 @@ class AdvertiseManager {
             const selectedAd = ads[0];
 
             // Update jumlah tampil
-            await collection.updateOne(
+            await database.updateOne(
+                ADS_COLLECTION,
                 { _id: selectedAd._id },
                 { $inc: { showCount: 1 } }
             );
@@ -51,7 +52,7 @@ class AdvertiseManager {
             return selectedAd;
         } catch (error) {
             console.error('[Advertise] Error getting advertisement:', error);
-            throw error;
+            return null;
         }
     }
 
@@ -94,12 +95,24 @@ class AdvertiseManager {
                 createdAt: now
             };
 
-            await collection.insertOne(ad);
+            // Gunakan database.insertOne langsung
+            await database.insertOne(ADS_COLLECTION, ad);
             console.log('[Advertise] New advertisement added:', title);
             return true;
         } catch (error) {
             console.error('[Advertise] Error adding advertisement:', error);
             return false;
+        }
+    }
+
+    static async listAdvertisements() {
+        try {
+            // Gunakan database.find langsung
+            const ads = await database.find(ADS_COLLECTION, {});
+            return ads;
+        } catch (error) {
+            console.error('[Advertise] Error listing advertisements:', error);
+            return [];
         }
     }
 }
