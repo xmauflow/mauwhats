@@ -30,6 +30,7 @@ async function cleanupRecentPartners() {
     }
 }
 
+
 /**
  * Initialize the anonymous chat collections
  */
@@ -63,126 +64,88 @@ async function initializeCollections() {
  */
 async function handleSearch(bot, msg, sender) {
     try {
-        // Check if user is already in a chat
-        const existingUser = await database.findOne(COLLECTION_NAME, { id: sender });
-        if (existingUser) {
-            if (existingUser.partner) {
-                await bot.sendMessage(msg.key.remoteJid, {
-                    text: 'You are already in an anonymous chat. Use *.stop* to end your current session first.'
-                });
-                return;
-            } else if (existingUser.status === 'waiting') {
-                await bot.sendMessage(msg.key.remoteJid, {
-                    text: 'You are already searching for a partner. Please wait while we find someone for you.'
-                });
-                return;
-            }
-        }
-
-        // Get or create user record
-        let userRecord;
-        if (existingUser) {
-            userRecord = existingUser;
-            // Update status to waiting
-            await database.updateOne(COLLECTION_NAME, { id: sender }, {
-                $set: { status: 'waiting', lastSearchTime: new Date() }
-            });
-        } else {
-            // Create new user record
-            userRecord = {
-                id: sender,
-                status: 'waiting',
-                partner: null,
-                joinedAt: new Date(),
-                lastSearchTime: new Date(),
-                recentPartners: [] // Array to store recent partners
-            };
-            await database.insertOne(COLLECTION_NAME, userRecord);
-        }
-
-        // Get the list of recent partners (those matched within the last hour)
-        const recentPartners = userRecord.recentPartners || [];
-        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000); // 1 hour ago
-        
-        // Filter out partners older than 1 hour
-        const currentRecentPartners = recentPartners
-            .filter(entry => new Date(entry.timestamp) > oneHourAgo)
-            .map(entry => entry.partnerId);
-
-        console.log(`[Debug] User ${sender} has ${currentRecentPartners.length} recent partners to avoid`);
-
-        // Perbaikan query pencarian partner
-        const waitingUser = await database.findOne(COLLECTION_NAME, {
-            status: 'waiting',
-            id: { 
-                $ne: sender,  // Bukan diri sendiri
-                $nin: currentRecentPartners  // Bukan partner terakhir
-            },
-            partner: null,  // Pastikan tidak memiliki partner
-            lastSearchTime: { $lt: new Date() }  // Prioritaskan yang lebih lama menunggu
+        // Check if user is already in chat
+        const existingUser = await database.findOne(COLLECTION_NAME, { 
+            id: sender,
+            status: 'chatting'
         });
 
-        if (waitingUser) {
-            // Double check untuk memastikan user masih available
-            const doubleCheck = await database.findOne(COLLECTION_NAME, { 
-                id: waitingUser.id,
-                status: 'waiting',
-                partner: null
+        if (existingUser && existingUser.partner) {
+            await bot.sendMessage(msg.key.remoteJid, { 
+                text: '❌ You are already in a conversation. Use *.stop* to end the chat first.' 
             });
+            return;
+        }
 
-            if (!doubleCheck) {
-                // Partner sudah tidak available, cari lagi
-                await handleSearch(bot, msg, sender);
-                return;
-            }
+        // Check if user is already searching
+        const searchingUser = await database.findOne(COLLECTION_NAME, {
+            id: sender,
+            status: 'waiting'
+        });
 
-            // Add each other to their recent partners list
+        if (searchingUser) {
+            await bot.sendMessage(msg.key.remoteJid, { 
+                text: '🔍 You are already in search mode. Please wait...\n\nUse *.stop* to cancel the search.' 
+            });
+            return;
+        }
+
+        // Find available partner
+        const partner = await database.findOne(COLLECTION_NAME, {
+            status: 'waiting',
+            id: { $ne: sender }
+        });
+
+        if (partner) {
+            // Connect both users
             await database.updateOne(COLLECTION_NAME, { id: sender }, {
                 $set: {
                     status: 'chatting',
-                    partner: waitingUser.id
-                },
-                $push: {
-                    recentPartners: {
-                        partnerId: waitingUser.id,
-                        timestamp: new Date()
-                    }
+                    partner: partner.id,
+                    lastActivity: new Date()
                 }
-            });
+            }, { upsert: true });
 
-            await database.updateOne(COLLECTION_NAME, { id: waitingUser.id }, {
+            await database.updateOne(COLLECTION_NAME, { id: partner.id }, {
                 $set: {
                     status: 'chatting',
-                    partner: sender
-                },
-                $push: {
-                    recentPartners: {
-                        partnerId: sender,
-                        timestamp: new Date()
-                    }
+                    partner: sender,
+                    lastActivity: new Date()
                 }
             });
 
+            // Send success messages
+            const connectedMsg = '🎉 *Partner found!*\n\n' +
+                               'You are now connected to a random person. ' +
+                               'Be respectful and enjoy your conversation.\n\n' +
+                               'Use *.next* to find a new partner or ' +
+                               '*.stop* to end the chat.';
+
+            await bot.sendMessage(msg.key.remoteJid, { text: connectedMsg });
+            await bot.sendMessage(partner.id, { text: connectedMsg });
+
+            // Send advertisement if configured
             await AdvertiseManager.sendAdvertisement(bot, sender, 'search');
-
-            // Notify both users
-            await bot.sendMessage(msg.key.remoteJid, {
-                text: '*Partner found!*\n\nYou are now connected to a random person. Be respectful and enjoy your conversation.\n\nUse *.next* to find a new partner or *.stop* to end the chat.'
-            });
-
-            await bot.sendMessage(waitingUser.id, {
-                text: '*Partner found!*\n\nYou are now connected to a random person. Be respectful and enjoy your conversation.\n\nUse *.next* to find a new partner or *.stop* to end the chat.'
-            });
+            await AdvertiseManager.sendAdvertisement(bot, partner.id, 'search');
         } else {
-            await bot.sendMessage(msg.key.remoteJid, {
-                text: '*Searching for a partner...*\n\nPlease wait while we find someone for you to chat with. You will be notified when a partner is found.\n\nUse *.stop* to cancel the search.'
+            // Add user to waiting list
+            await database.updateOne(COLLECTION_NAME, { id: sender }, {
+                $set: {
+                    status: 'waiting',
+                    partner: null,
+                    lastActivity: new Date()
+                }
+            }, { upsert: true });
+
+            await bot.sendMessage(msg.key.remoteJid, { 
+                text: '🔍 *Searching for a chat partner...*\n\n' +
+                      'Please wait while we find someone for you.\n\n' +
+                      'Use *.stop* to cancel the search.' 
             });
         }
     } catch (error) {
-        console.error('[AnonymousChat] Search error:', error);
-        await bot.sendMessage(msg.key.remoteJid, {
-            text: 'An error occurred while searching for a partner. Please try again later.'
-        });
+        console.error('[Search] Error:', error);
+        throw error;
     }
 }
 
@@ -194,132 +157,41 @@ async function handleSearch(bot, msg, sender) {
  */
 async function handleNext(bot, msg, sender) {
     try {
-        console.log(`[Debug] handleNext called for user ${sender}`);
-        
-        // Check if user is in a chat
-        const user = await database.findOne(COLLECTION_NAME, { id: sender });
-        
+        // Check if user is in chat
+        const user = await database.findOne(COLLECTION_NAME, {
+            id: sender,
+            status: 'chatting'
+        });
+
         if (!user || !user.partner) {
-            console.log(`[Debug] User ${sender} is not in a chat. User record:`, user);
             await bot.sendMessage(msg.key.remoteJid, { 
-                text: '❌ Kamu tidak sedang dalam percakapan dengan siapapun.' 
+                text: '❌ You are not in a conversation with anyone.' 
             });
             return;
         }
 
         const partnerId = user.partner;
-        console.log(`[Debug] User ${sender} has partner ${partnerId}`);
 
-        // Notify the partner
+        // Notify current partner
         await bot.sendMessage(partnerId, { 
-            text: '👋 Partner telah memutuskan untuk mencari partner baru.' 
+            text: '👋 Your partner has decided to find someone new.' 
         });
 
-        // Update partner status
-        await database.updateOne(COLLECTION_NAME, { id: partnerId }, { 
-            $set: { status: 'idle', partner: null } 
-        });
-
-        // Get the list of recent partners (those matched within the last hour)
-        const recentPartners = user.recentPartners || [];
-        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000); // 1 hour ago
-        
-        // Filter out partners older than 1 hour and add current partner
-        const currentRecentPartners = recentPartners
-            .filter(entry => new Date(entry.timestamp) > oneHourAgo)
-            .map(entry => entry.partnerId);
-        
-        // Add current partner to avoid immediate rematch
-        if (!currentRecentPartners.includes(partnerId)) {
-            currentRecentPartners.push(partnerId);
-        }
-
-        console.log(`[Debug] User ${sender} has ${currentRecentPartners.length} recent partners to avoid`);
-
-        // Update user status to waiting
-        await database.updateOne(COLLECTION_NAME, { id: sender }, {
-            $set: { 
-                status: 'waiting', 
+        // Update both users' status
+        await database.updateOne(COLLECTION_NAME, { id: partnerId }, {
+            $set: {
+                status: 'idle',
                 partner: null,
-                lastSearchTime: new Date()
+                lastActivity: new Date()
             }
         });
 
-        // Look for a waiting partner
-        const waitingUser = await database.findOne(COLLECTION_NAME, {
-            status: 'waiting',
-            id: { 
-                $ne: sender,  // Not self
-                $nin: currentRecentPartners  // Not recent partners
-            },
-            partner: null,  // Ensure no partner
-            lastSearchTime: { $lt: new Date() }  // Prioritize those waiting longer
-        });
+        // Start new search for current user
+        await handleSearch(bot, msg, sender);
 
-        if (waitingUser) {
-            // Double check to ensure user is still available
-            const doubleCheck = await database.findOne(COLLECTION_NAME, { 
-                id: waitingUser.id,
-                status: 'waiting',
-                partner: null
-            });
-
-            if (!doubleCheck) {
-                // Partner is no longer available, notify user
-                await bot.sendMessage(msg.key.remoteJid, {
-                    text: '🔍 *Mencari partner baru...*\n\nMohon tunggu sementara kami mencari partner chat untuk kamu.'
-                });
-                return;
-            }
-
-            // Add each other to their recent partners list
-            await database.updateOne(COLLECTION_NAME, { id: sender }, {
-                $set: {
-                    status: 'chatting',
-                    partner: waitingUser.id
-                },
-                $push: {
-                    recentPartners: {
-                        partnerId: waitingUser.id,
-                        timestamp: new Date()
-                    }
-                }
-            });
-
-            await database.updateOne(COLLECTION_NAME, { id: waitingUser.id }, {
-                $set: {
-                    status: 'chatting',
-                    partner: sender
-                },
-                $push: {
-                    recentPartners: {
-                        partnerId: sender,
-                        timestamp: new Date()
-                    }
-                }
-            });
-
-            // Send advertisement if configured
-            await AdvertiseManager.sendAdvertisement(bot, sender, 'search');
-
-            // Notify both users
-            await bot.sendMessage(msg.key.remoteJid, {
-                text: '*Partner found!*\n\nKamu sekarang terhubung dengan orang acak. Bersikaplah sopan dan nikmati percakapanmu.\n\nGunakan *.next* untuk mencari partner baru atau *.stop* untuk mengakhiri chat.'
-            });
-
-            await bot.sendMessage(waitingUser.id, {
-                text: '*Partner found!*\n\nKamu sekarang terhubung dengan orang acak. Bersikaplah sopan dan nikmati percakapanmu.\n\nGunakan *.next* untuk mencari partner baru atau *.stop* untuk mengakhiri chat.'
-            });
-        } else {
-            await bot.sendMessage(msg.key.remoteJid, {
-                text: '🔍 *Mencari partner baru...*\n\nMohon tunggu sementara kami mencari partner chat untuk kamu.\n\nGunakan *.stop* untuk membatalkan pencarian.'
-            });
-        }
     } catch (error) {
-        console.error('[AnonymousChat] Next error:', error);
-        await bot.sendMessage(msg.key.remoteJid, { 
-            text: '❌ Terjadi kesalahan saat mencari partner baru. Silakan coba lagi nanti.' 
-        });
+        console.error('[Next] Error:', error);
+        throw error;
     }
 }
 
@@ -354,43 +226,50 @@ async function findAvailablePartner(userID) {
  */
 async function handleStop(bot, msg, sender) {
     try {
-        // Check if user is in a chat or waiting
         const user = await database.findOne(COLLECTION_NAME, { id: sender });
+
         if (!user) {
             await bot.sendMessage(msg.key.remoteJid, { 
-                text: '❌ You are not in an anonymous chat session.' 
+                text: '❌ You are not in a conversation or search.' 
             });
             return;
         }
 
         if (user.partner) {
-            // Notify the partner
+            // Notify partner if exists
             await bot.sendMessage(user.partner, { 
-                text: '👋 Your chat partner has ended the conversation. Use *.search* to find a new partner.' 
+                text: '👋 Your partner has ended the conversation.' 
             });
 
             // Update partner status
-            await database.updateOne(COLLECTION_NAME, { id: user.partner }, { 
-                $set: { status: 'idle', partner: null } 
+            await database.updateOne(COLLECTION_NAME, { id: user.partner }, {
+                $set: {
+                    status: 'idle',
+                    partner: null,
+                    lastActivity: new Date()
+                }
             });
         }
 
         // Update user status
-        await database.updateOne(COLLECTION_NAME, { id: sender }, { 
-            $set: { status: 'idle', partner: null } 
+        await database.updateOne(COLLECTION_NAME, { id: sender }, {
+            $set: {
+                status: 'idle',
+                partner: null,
+                lastActivity: new Date()
+            }
         });
 
         await bot.sendMessage(msg.key.remoteJid, { 
-            text: '✅ You have successfully ended the anonymous chat session. Use *.search* to start a new one.' 
+            text: '✅ Chat ended.\n\nUse *.search* to find a new partner.' 
         });
-        await AdvertiseManager.sendAdvertisement(bot, sender, 'end');
+
     } catch (error) {
-        console.error('[AnonymousChat] Stop error:', error);
-        await bot.sendMessage(msg.key.remoteJid, { 
-            text: '❌ An error occurred while ending the chat. Please try again.' 
-        });
+        console.error('[Stop] Error:', error);
+        throw error;
     }
 }
+
 
 /**
  * Handle the sendpp command - send profile picture to partner
@@ -400,40 +279,40 @@ async function handleStop(bot, msg, sender) {
  */
 async function handleSendPP(bot, msg, sender) {
     try {
-        // Check if user is in a chat
-        const user = await database.findOne(COLLECTION_NAME, { id: sender });
+        const user = await database.findOne(COLLECTION_NAME, {
+            id: sender,
+            status: 'chatting'
+        });
+
         if (!user || !user.partner) {
             await bot.sendMessage(msg.key.remoteJid, { 
-                text: '❌ You are not in an anonymous chat. Use *.search* to find a partner first.' 
+                text: '❌ You must be in a conversation to send your profile picture.' 
             });
             return;
         }
 
-        // Get profile picture
-        let ppUrl;
         try {
-            ppUrl = await bot.profilePictureUrl(sender, 'image');
-        } catch (err) {
-            await bot.sendMessage(msg.key.remoteJid, { 
-                text: '❌ Could not retrieve your profile picture. Make sure you have a profile picture set.' 
+            const ppUrl = await bot.profilePictureUrl(sender, 'image');
+            
+            // Send PP to partner
+            await bot.sendMessage(user.partner, { 
+                image: { url: ppUrl },
+                caption: '👤 Partner\'s profile picture.'
             });
-            return;
+
+            await bot.sendMessage(msg.key.remoteJid, { 
+                text: '✅ Profile picture successfully sent to your partner.' 
+            });
+
+        } catch (ppError) {
+            await bot.sendMessage(msg.key.remoteJid, { 
+                text: '❌ Could not fetch profile picture. Make sure you have a profile picture set.' 
+            });
         }
 
-        // Send profile picture to partner
-        await bot.sendMessage(user.partner, { 
-            image: { url: ppUrl },
-            caption: '🖼️ Your anonymous chat partner has shared their profile picture with you.'
-        });
-
-        await bot.sendMessage(msg.key.remoteJid, { 
-            text: '✅ Your profile picture has been sent to your chat partner.' 
-        });
     } catch (error) {
-        console.error('[AnonymousChat] SendPP error:', error);
-        await bot.sendMessage(msg.key.remoteJid, { 
-            text: '❌ An error occurred while sending your profile picture. Please try again later.' 
-        });
+        console.error('[SendPP] Error:', error);
+        throw error;
     }
 }
 
@@ -445,293 +324,21 @@ async function handleSendPP(bot, msg, sender) {
  */
 async function relayMessage(bot, msg, sender) {
     try {
-        // Check if user is in a chat
-        const user = await database.findOne(COLLECTION_NAME, { id: sender });
-        if (!user || !user.partner || user.status !== 'chatting') {
-            return false; // Not in a chat, don't relay
+        const user = await database.findOne(COLLECTION_NAME, {
+            id: sender,
+            status: 'chatting'
+        });
+
+        if (!user || !user.partner) {
+            return false;
         }
 
-        // Get the message content
-        const messageContent = msg.message;
-        const partnerId = user.partner;
-        
-        // Function to queue message if delivery fails
-        const queueMessageOnFailure = async (content, messageType, caption = null, mediaBuffer = null) => {
-            try {
-                await database.insertOne('message_queue', {
-                    sender: sender,
-                    recipient: partnerId,
-                    content: content,
-                    messageType: messageType,
-                    caption: caption,
-                    mediaBuffer: mediaBuffer,
-                    timestamp: new Date(),
-                    status: 'pending',
-                    retries: 0,
-                    originalMessageId: msg.key.id
-                });
-                
-                console.log(`[AnonymousChat] Message queued for later delivery to ${partnerId}`);
-                
-                // Notify sender that message will be delivered later
-                await bot.sendMessage(sender, {
-                    text: '⏳ Your message will be delivered when your partner comes back online.'
-                });
-                
-                return true;
-            } catch (queueError) {
-                console.error('[AnonymousChat] Failed to queue message:', queueError);
-                return false;
-            }
-        };
-        
-        // Try to deliver the message
-        try {
-            // Handle different message types
-            if (messageContent.conversation) {
-                // Simple text message
-                await bot.sendMessage(partnerId, { 
-                    text: messageContent.conversation 
-                });
-                return true;
-            } 
-            else if (messageContent.extendedTextMessage) {
-                // Extended text message
-                await bot.sendMessage(partnerId, { 
-                    text: messageContent.extendedTextMessage.text 
-                });
-                return true;
-            }
-            else if (messageContent.imageMessage) {
-                // Image message
-                const imageBuffer = await downloadMediaMessage(
-                    msg,
-                    'buffer',
-                    {},
-                    { 
-                        logger: console,
-                        reuploadRequest: bot.updateMediaMessage 
-                    }
-                );
-                
-                await bot.sendMessage(partnerId, { 
-                    image: imageBuffer,
-                    caption: messageContent.imageMessage.caption || '',
-                    mimetype: messageContent.imageMessage.mimetype
-                });
-                return true;
-            }
-            else if (messageContent.videoMessage) {
-                // Video message
-                const videoBuffer = await downloadMediaMessage(
-                    msg,
-                    'buffer',
-                    {},
-                    { 
-                        logger: console,
-                        reuploadRequest: bot.updateMediaMessage 
-                    }
-                );
-                
-                await bot.sendMessage(partnerId, { 
-                    video: videoBuffer,
-                    caption: messageContent.videoMessage.caption || '',
-                    mimetype: messageContent.videoMessage.mimetype
-                });
-                return true;
-            }
-            else if (messageContent.audioMessage) {
-                // Audio/voice message
-                const audioBuffer = await downloadMediaMessage(
-                    msg,
-                    'buffer',
-                    {},
-                    { 
-                        logger: console,
-                        reuploadRequest: bot.updateMediaMessage 
-                    }
-                );
-                
-                await bot.sendMessage(partnerId, { 
-                    audio: audioBuffer,
-                    mimetype: messageContent.audioMessage.mimetype,
-                    ptt: messageContent.audioMessage.ptt || false
-                });
-                return true;
-            }
-            else if (messageContent.stickerMessage) {
-                // Sticker message
-                const stickerBuffer = await downloadMediaMessage(
-                    msg,
-                    'buffer',
-                    {},
-                    { 
-                        logger: console,
-                        reuploadRequest: bot.updateMediaMessage 
-                    }
-                );
-                
-                await bot.sendMessage(partnerId, { 
-                    sticker: stickerBuffer
-                });
-                return true;
-            }
-            else if (messageContent.documentMessage) {
-                // Document message
-                const docBuffer = await downloadMediaMessage(
-                    msg,
-                    'buffer',
-                    {},
-                    { 
-                        logger: console,
-                        reuploadRequest: bot.updateMediaMessage 
-                    }
-                );
-                
-                await bot.sendMessage(partnerId, { 
-                    document: docBuffer,
-                    mimetype: messageContent.documentMessage.mimetype,
-                    fileName: messageContent.documentMessage.fileName || 'document'
-                });
-                return true;
-            }
-            else if (messageContent.contactMessage || messageContent.contactsArrayMessage) {
-                // Contact message
-                if (messageContent.contactMessage) {
-                    await bot.sendMessage(partnerId, { 
-                        contacts: { 
-                            displayName: messageContent.contactMessage.displayName,
-                            contacts: [{ vcard: messageContent.contactMessage.vcard }] 
-                        } 
-                    });
-                } else {
-                    // Multiple contacts
-                    await bot.sendMessage(partnerId, { 
-                        contacts: messageContent.contactsArrayMessage 
-                    });
-                }
-                return true;
-            }
-            else if (messageContent.locationMessage) {
-                // Location message
-                await bot.sendMessage(partnerId, { 
-                    location: { 
-                        degreesLatitude: messageContent.locationMessage.degreesLatitude,
-                        degreesLongitude: messageContent.locationMessage.degreesLongitude
-                    }
-                });
-                return true;
-            }
-            else {
-                console.log('[AnonymousChat] Unsupported message type:', Object.keys(messageContent));
-                
-                // Notify sender that this message type is not supported
-                await bot.sendMessage(sender, {
-                    text: '❗ This message type could not be relayed to your partner.'
-                });
-                return false;
-            }
-        } catch (deliveryError) {
-            console.error('[AnonymousChat] Message delivery failed:', deliveryError);
-            
-            // Queue the message for later delivery based on its type
-            try {
-                if (messageContent.conversation) {
-                    return await queueMessageOnFailure(messageContent.conversation, 'text');
-                } 
-                else if (messageContent.extendedTextMessage) {
-                    return await queueMessageOnFailure(messageContent.extendedTextMessage.text, 'text');
-                }
-                else if (messageContent.imageMessage) {
-                    const imageBuffer = await downloadMediaMessage(
-                        msg,
-                        'buffer',
-                        {},
-                        { 
-                            logger: console,
-                            reuploadRequest: bot.updateMediaMessage 
-                        }
-                    );
-                    return await queueMessageOnFailure(
-                        null, 
-                        'image', 
-                        messageContent.imageMessage.caption || '', 
-                        imageBuffer
-                    );
-                }
-                else if (messageContent.videoMessage) {
-                    const videoBuffer = await downloadMediaMessage(
-                        msg,
-                        'buffer',
-                        {},
-                        { 
-                            logger: console,
-                            reuploadRequest: bot.updateMediaMessage 
-                        }
-                    );
-                    return await queueMessageOnFailure(
-                        null, 
-                        'video', 
-                        messageContent.videoMessage.caption || '', 
-                        videoBuffer
-                    );
-                }
-                else if (messageContent.audioMessage) {
-                    const audioBuffer = await downloadMediaMessage(
-                        msg,
-                        'buffer',
-                        {},
-                        { 
-                            logger: console,
-                            reuploadRequest: bot.updateMediaMessage 
-                        }
-                    );
-                    return await queueMessageOnFailure(null, 'audio', null, audioBuffer);
-                }
-                else if (messageContent.stickerMessage) {
-                    const stickerBuffer = await downloadMediaMessage(
-                        msg,
-                        'buffer',
-                        {},
-                        { 
-                            logger: console,
-                            reuploadRequest: bot.updateMediaMessage 
-                        }
-                    );
-                    return await queueMessageOnFailure(null, 'sticker', null, stickerBuffer);
-                }
-                else if (messageContent.documentMessage) {
-                    const docBuffer = await downloadMediaMessage(
-                        msg,
-                        'buffer',
-                        {},
-                        { 
-                            logger: console,
-                            reuploadRequest: bot.updateMediaMessage 
-                        }
-                    );
-                    return await queueMessageOnFailure(
-                        messageContent.documentMessage.fileName || 'document', 
-                        'document', 
-                        null, 
-                        docBuffer
-                    );
-                }
-                // Other message types are more complex to queue
-                else {
-                    // Notify sender that this message type couldn't be queued
-                    await bot.sendMessage(sender, {
-                        text: '❗ This message type could not be queued for later delivery.'
-                    });
-                    return false;
-                }
-            } catch (queueError) {
-                console.error('[AnonymousChat] Failed to queue message:', queueError);
-                return false;
-            }
-        }
+        // Forward message to partner
+        await bot.sendMessage(user.partner, msg.message);
+        return true;
+
     } catch (error) {
-        console.error('[AnonymousChat] Relay error:', error);
+        console.error('[Relay] Error:', error);
         return false;
     }
 }
@@ -1089,10 +696,23 @@ async function processCommand(bot, msg, sender) {
     }
 }
 
+// Help command handler
+async function sendHelpMessage(bot, msg) {
+    const helpText = `🤖 *Anonymous Chat Bot*\n\n` +
+                    `Available Commands:\n\n` +
+                    `*.search* - Find a chat partner\n` +
+                    `*.next* - Find a new partner\n` +
+                    `*.stop* - End the chat\n` +
+                    `*.sendpp* - Share your profile picture\n` +
+                    `*.help* - Show this help message\n\n` +
+                    `Start chatting now by typing *.search*!`;
+
+    await bot.sendMessage(msg.key.remoteJid, { text: helpText });
+}
+
 // Export the module functions
-export default {
-    initializeCollections,
+export {
     processCommand,
     relayMessage,
-    processMessageQueue
+    sendHelpMessage
 };
