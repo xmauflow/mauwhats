@@ -194,20 +194,25 @@ async function handleSearch(bot, msg, sender) {
  */
 async function handleNext(bot, msg, sender) {
     try {
+        console.log(`[Debug] handleNext called for user ${sender}`);
+        
         // Check if user is in a chat
         const user = await database.findOne(COLLECTION_NAME, { id: sender });
+        
         if (!user || !user.partner) {
+            console.log(`[Debug] User ${sender} is not in a chat. User record:`, user);
             await bot.sendMessage(msg.key.remoteJid, { 
-                text: '❌ You are not in an anonymous chat. Use *.search* to find a partner first.' 
+                text: '❌ Kamu tidak sedang dalam percakapan dengan siapapun.' 
             });
             return;
         }
 
         const partnerId = user.partner;
+        console.log(`[Debug] User ${sender} has partner ${partnerId}`);
 
         // Notify the partner
         await bot.sendMessage(partnerId, { 
-            text: '👋 Your chat partner has left and is looking for someone new. Use *.search* to find a new partner.' 
+            text: '👋 Partner telah memutuskan untuk mencari partner baru.' 
         });
 
         // Update partner status
@@ -215,13 +220,129 @@ async function handleNext(bot, msg, sender) {
             $set: { status: 'idle', partner: null } 
         });
 
-        // Start search for new partner
-        await handleSearch(bot, msg, sender);
+        // Get the list of recent partners (those matched within the last hour)
+        const recentPartners = user.recentPartners || [];
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000); // 1 hour ago
+        
+        // Filter out partners older than 1 hour and add current partner
+        const currentRecentPartners = recentPartners
+            .filter(entry => new Date(entry.timestamp) > oneHourAgo)
+            .map(entry => entry.partnerId);
+        
+        // Add current partner to avoid immediate rematch
+        if (!currentRecentPartners.includes(partnerId)) {
+            currentRecentPartners.push(partnerId);
+        }
+
+        console.log(`[Debug] User ${sender} has ${currentRecentPartners.length} recent partners to avoid`);
+
+        // Update user status to waiting
+        await database.updateOne(COLLECTION_NAME, { id: sender }, {
+            $set: { 
+                status: 'waiting', 
+                partner: null,
+                lastSearchTime: new Date()
+            }
+        });
+
+        // Look for a waiting partner
+        const waitingUser = await database.findOne(COLLECTION_NAME, {
+            status: 'waiting',
+            id: { 
+                $ne: sender,  // Not self
+                $nin: currentRecentPartners  // Not recent partners
+            },
+            partner: null,  // Ensure no partner
+            lastSearchTime: { $lt: new Date() }  // Prioritize those waiting longer
+        });
+
+        if (waitingUser) {
+            // Double check to ensure user is still available
+            const doubleCheck = await database.findOne(COLLECTION_NAME, { 
+                id: waitingUser.id,
+                status: 'waiting',
+                partner: null
+            });
+
+            if (!doubleCheck) {
+                // Partner is no longer available, notify user
+                await bot.sendMessage(msg.key.remoteJid, {
+                    text: '🔍 *Mencari partner baru...*\n\nMohon tunggu sementara kami mencari partner chat untuk kamu.'
+                });
+                return;
+            }
+
+            // Add each other to their recent partners list
+            await database.updateOne(COLLECTION_NAME, { id: sender }, {
+                $set: {
+                    status: 'chatting',
+                    partner: waitingUser.id
+                },
+                $push: {
+                    recentPartners: {
+                        partnerId: waitingUser.id,
+                        timestamp: new Date()
+                    }
+                }
+            });
+
+            await database.updateOne(COLLECTION_NAME, { id: waitingUser.id }, {
+                $set: {
+                    status: 'chatting',
+                    partner: sender
+                },
+                $push: {
+                    recentPartners: {
+                        partnerId: sender,
+                        timestamp: new Date()
+                    }
+                }
+            });
+
+            // Send advertisement if configured
+            await AdvertiseManager.sendAdvertisement(bot, sender, 'search');
+
+            // Notify both users
+            await bot.sendMessage(msg.key.remoteJid, {
+                text: '*Partner found!*\n\nKamu sekarang terhubung dengan orang acak. Bersikaplah sopan dan nikmati percakapanmu.\n\nGunakan *.next* untuk mencari partner baru atau *.stop* untuk mengakhiri chat.'
+            });
+
+            await bot.sendMessage(waitingUser.id, {
+                text: '*Partner found!*\n\nKamu sekarang terhubung dengan orang acak. Bersikaplah sopan dan nikmati percakapanmu.\n\nGunakan *.next* untuk mencari partner baru atau *.stop* untuk mengakhiri chat.'
+            });
+        } else {
+            await bot.sendMessage(msg.key.remoteJid, {
+                text: '🔍 *Mencari partner baru...*\n\nMohon tunggu sementara kami mencari partner chat untuk kamu.\n\nGunakan *.stop* untuk membatalkan pencarian.'
+            });
+        }
     } catch (error) {
         console.error('[AnonymousChat] Next error:', error);
         await bot.sendMessage(msg.key.remoteJid, { 
-            text: '❌ An error occurred while finding a new partner. Please try again later.' 
+            text: '❌ Terjadi kesalahan saat mencari partner baru. Silakan coba lagi nanti.' 
         });
+    }
+}
+
+// Fungsi helper untuk mencari partner yang tersedia
+async function findAvailablePartner(userID) {
+    try {
+        // Cek waiting list untuk partner yang tersedia
+        const waitingUser = await database.findOne('waiting_users', {
+            userID: { $ne: userID }  // Jangan pilih diri sendiri
+        });
+
+        if (waitingUser) {
+            // Hapus user dari waiting list
+            await database.deleteOne('waiting_users', {
+                userID: waitingUser.userID
+            });
+            return waitingUser.userID;
+        }
+
+        return null;
+    } catch (error) {
+        console.error('[Error] findAvailablePartner:', error);
+        return null;
     }
 }
 
