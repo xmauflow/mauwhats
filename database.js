@@ -29,6 +29,39 @@ class Database {
         }
     }
 
+    async initializeCollections() {
+        try {
+            // Create basic collections
+            await this.createCollection('anonymous_chat');
+            await this.createCollection('message_queue');
+            await this.createCollection('advertisements');
+            
+            // Create indexes for better performance
+            await this.db.collection('anonymous_chat').createIndex({ status: 1 });
+            await this.db.collection('anonymous_chat').createIndex({ lastSearchTime: 1 });
+            await this.db.collection('message_queue').createIndex({ timestamp: 1 });
+            await this.db.collection('advertisements').createIndex({ type: 1 });
+            
+            console.log('[Database] Collections initialized successfully');
+        } catch (error) {
+            console.error('[Database] Error initializing collections:', error);
+            throw error;
+        }
+    }
+
+    async createCollection(name) {
+        try {
+            const collections = await this.db.listCollections().toArray();
+            if (!collections.some(col => col.name === name)) {
+                await this.db.createCollection(name);
+                console.log(`[Database] Collection '${name}' created`);
+            }
+        } catch (error) {
+            console.error(`[Database] Error creating collection '${name}':`, error);
+            throw error;
+        }
+    }
+
     collection(name) {
         if (!this.db) {
             throw new Error('Database not connected');
