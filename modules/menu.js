@@ -744,22 +744,27 @@ async function processMessageQueue(bot) {
  * @param {String} sender - The sender's ID
  */
 async function processCommand(bot, msg, sender) {
-    // Ekstrak body dengan aman dari berbagai kemungkinan lokasi
+    console.log("[Debug] processCommand called with sender:", sender);
+    
+    // Ekstrak body dengan aman
     const msgBody = msg.body || 
                   (msg.message?.conversation) || 
                   (msg.message?.extendedTextMessage?.text) || 
                   (msg.message?.imageMessage?.caption) || 
                   '';
     
-    // Gunakan msgBody yang sudah diekstrak dengan aman
     const command = msgBody.toLowerCase().trim();
+    console.log("[Debug] Command extracted:", command);
     
-    // Check if user is admin (you need to implement this check)
+    // Check if user is admin
     const isAdmin = await checkIsAdmin(bot, sender);
+    console.log("[Debug] Is admin check result:", isAdmin);
     
     if (isAdmin) {
+        console.log("[Debug] User is admin, processing admin commands");
+        
         if (command.startsWith('.addad')) {
-            // Format: .addad <type> <title> | <content> | <priority> | <days_active>
+            console.log("[Debug] Processing .addad command");
             const fullCommand = command.slice(7).trim(); // Hapus '.addad '
             const parts = fullCommand.split('|').map(p => p.trim());
             
