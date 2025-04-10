@@ -782,26 +782,29 @@ async function processCommand(bot, msg, sender) {
         
         if (command.startsWith('.addad')) {
             console.log("[Debug] Processing .addad command");
-            const fullCommand = command.slice(7).trim(); // Hapus '.addad '
+            const fullCommand = msgBody.slice(7).trim(); // Hapus '.addad ' dan gunakan msgBody asli, bukan command
             const parts = fullCommand.split('|').map(p => p.trim());
             
             if (parts.length !== 4) {
                 await bot.sendMessage(sender, {
-                    text: '❌ Format salah!\n\nFormat yang benar:\n.addad <type> <title> | <content> | <priority> | <days_active>\n\n' +
-                        'Contoh:\n.addad start Selamat Datang | 🌟 Selamat datang di bot chat anonymous! | 5 | 30\n\n' +
+                    text: ' Format salah!\n\nFormat yang benar:\n.addad <type> <title> | <content> | <priority> | <days_active>\n\n' +
+                        'Contoh:\n.addad start Selamat Datang |  Selamat datang di bot chat anonymous! | 5 | 30\n\n' +
                         'Types yang tersedia: start, search, chat, end'
                 });
                 return true;
             }
-
+        
             const [typeAndTitle, content, priority, daysActive] = parts;
-            const [type, ...titleParts] = typeAndTitle.split(' ');
+            
+            // Gunakan msgBody asli untuk mendapatkan type dan title
+            const typeAndTitleOriginal = msgBody.slice(7).trim().split('|')[0].trim();
+            const [type, ...titleParts] = typeAndTitleOriginal.split(' ');
             
             // Validasi type
             const validTypes = ['start', 'search', 'chat', 'end'];
             if (!validTypes.includes(type.toLowerCase())) {
                 await bot.sendMessage(sender, {
-                    text: '❌ Type tidak valid!\n\nType yang tersedia:\nstart, search, chat, end'
+                    text: ' Type tidak valid!\n\nType yang tersedia:\nstart, search, chat, end'
                 });
                 return true;
             }
@@ -812,7 +815,7 @@ async function processCommand(bot, msg, sender) {
             const priorityNum = parseInt(priority);
             if (isNaN(priorityNum) || priorityNum < 1 || priorityNum > 10) {
                 await bot.sendMessage(sender, {
-                    text: '❌ Priority harus berupa angka antara 1-10'
+                    text: ' Priority harus berupa angka antara 1-10'
                 });
                 return true;
             }
@@ -821,34 +824,29 @@ async function processCommand(bot, msg, sender) {
             const days = parseInt(daysActive);
             if (isNaN(days) || days < 1) {
                 await bot.sendMessage(sender, {
-                    text: '❌ days_active harus berupa angka positif'
+                    text: ' days_active harus berupa angka positif'
                 });
                 return true;
             }
-
-            const now = new Date();
-            const endDate = new Date();
-            endDate.setDate(endDate.getDate() + days);
-
-            const adData = {
-                type: type.toLowerCase(),
-                title,
-                content,
-                priority: priorityNum,
-                active: true,
-                startDate: now,
-                endDate: endDate
-            };
-
+        
+            // Gunakan content asli tanpa mengubah case
+            const contentOriginal = msgBody.slice(7).trim().split('|')[1].trim();
+        
             try {
-                const success = await AdvertiseManager.addAdvertisement(adData);
+                const success = await AdvertiseManager.addAdvertisement(
+                    type.toLowerCase(), 
+                    title,
+                    contentOriginal, // Gunakan content asli
+                    priorityNum,
+                    days
+                );
                 await bot.sendMessage(sender, {
-                    text: success ? '✅ Iklan berhasil ditambahkan!' : '❌ Gagal menambahkan iklan'
+                    text: success ? ' Iklan berhasil ditambahkan!' : ' Gagal menambahkan iklan'
                 });
             } catch (error) {
                 console.error('[Error] Failed to add advertisement:', error);
                 await bot.sendMessage(sender, {
-                    text: '❌ Terjadi kesalahan saat menambahkan iklan'
+                    text: ' Terjadi kesalahan saat menambahkan iklan'
                 });
             }
             return true;
