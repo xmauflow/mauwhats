@@ -919,6 +919,33 @@ async function processCommand(bot, msg, sender) {
         const cleanCommand = command.startsWith('.') ? command.slice(1) : command;
         
         switch (cleanCommand) {
+            case 'adstats':
+                const stats = await AdvertiseManager.getStats();
+                await bot.sendMessage(msg.key.remoteJid, { text: stats });
+                return true;
+                
+            case 'delad':
+                const adId = args[0];
+                if (!adId) {
+                    await bot.sendMessage(msg.key.remoteJid, { 
+                        text: '❌ Please provide an advertisement ID. Usage: .delad [id]' 
+                    });
+                    return true;
+                }
+                
+                const result = await AdvertiseManager.deleteAdvertisement(adId);
+                
+                if (result.success) {
+                    await bot.sendMessage(msg.key.remoteJid, { 
+                        text: `✅ ${result.message}` 
+                    });
+                } else {
+                    await bot.sendMessage(msg.key.remoteJid, { 
+                        text: `❌ ${result.message}` 
+                    });
+                }
+                return true;
+            
             case 'search':
                 await handleSearch(bot, msg, sender);
                 return true;

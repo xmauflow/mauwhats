@@ -118,7 +118,6 @@ class AdvertiseManager {
 
     static async getStats() {
         try {
-            const now = new Date();
             const ads = await database.find(ADS_COLLECTION, {});
             
             if (!ads || ads.length === 0) {
@@ -130,20 +129,24 @@ class AdvertiseManager {
             // Group ads by type
             const adsByType = {};
             ads.forEach(ad => {
-                if (!adsByType[ad.type]) {
-                    adsByType[ad.type] = [];
+                const type = ad.type || 'unknown';
+                if (!adsByType[type]) {
+                    adsByType[type] = [];
                 }
-                adsByType[ad.type].push(ad);
+                adsByType[type].push(ad);
             });
 
             // Generate statistics for each type
-            for (const [type, typeAds] of Object.entries(adsByType)) {
+            Object.entries(adsByType).forEach(([type, typeAds]) => {
+                const now = new Date();
+                
                 stats += `*${type.toUpperCase()}*\n`;
                 stats += `Total Ads: ${typeAds.length}\n`;
                 
                 const activeAds = typeAds.filter(ad => {
-                    if (!ad.startDate || !ad.endDate) return ad.active;
-                    return ad.active && new Date(ad.endDate) >= now;
+                    if (!ad.active) return false;
+                    if (!ad.startDate || !ad.endDate) return true;
+                    return new Date(ad.endDate) >= now;
                 });
                 
                 stats += `Active Ads: ${activeAds.length}\n`;
@@ -160,16 +163,51 @@ class AdvertiseManager {
                 if (topAds.length > 0) {
                     stats += "Top Performing Ads:\n";
                     topAds.forEach((ad, index) => {
-                        stats += `${index + 1}. "${ad.title}" - ${ad.showCount || 0} shows\n`;
+                        const idStr = ad._id.toString().slice(-6); // Last 6 chars of ID
+                        stats += `${index + 1}. "${ad.title}" (ID: ${idStr}) - ${ad.showCount || 0} shows\n`;
                     });
                 }
                 stats += "\n";
-            }
+            });
 
             return stats;
         } catch (error) {
             console.error('[Advertise] Error getting statistics:', error);
             return "Error retrieving advertisement statistics.";
+        }
+    }
+
+    static async deleteAdvertisement(adId) {
+        try {
+            // Validasi ID
+            let objectId;
+            try {
+                objectId = new ObjectId(adId);
+            } catch (error) {
+                console.error('[Advertise] Invalid advertisement ID:', error);
+                return { success: false, message: 'Invalid advertisement ID format' };
+            }
+
+            // Cari iklan terlebih dahulu
+            const ad = await database.findOne(ADS_COLLECTION, { _id: objectId });
+            
+            if (!ad) {
+                return { success: false, message: 'Advertisement not found' };
+            }
+
+            // Hapus iklan
+            await database.deleteOne(ADS_COLLECTION, { _id: objectId });
+            
+            return {
+                success: true,
+                message: `Advertisement "${ad.title}" deleted successfully`
+            };
+        } catch (error) {
+            console.error('[Advertise] Error deleting advertisement:', error);
+            return { 
+                success: false, 
+                message: `Error deleting advertisement: ${error.message}` 
+            };
         }
     }
 }

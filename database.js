@@ -137,11 +137,11 @@ class Database {
         }
     }
 
-    async findOne(collectionName, query) {
+    async findOne(collectionName, query = {}) {
         try {
-            return await this.collection(collectionName).findOne(query);
+            return await this.db.collection(collectionName).findOne(query);
         } catch (error) {
-            console.error(`Error in findOne (${collectionName}):`, error);
+            console.error('[Database] FindOne error:', error);
             return null;
         }
     }
@@ -180,9 +180,9 @@ class Database {
 
     async deleteOne(collectionName, filter) {
         try {
-            return await this.collection(collectionName).deleteOne(filter);
+            return await this.db.collection(collectionName).deleteOne(filter);
         } catch (error) {
-            console.error(`Error in deleteOne (${collectionName}):`, error);
+            console.error('[Database] DeleteOne error:', error);
             throw error;
         }
     }
