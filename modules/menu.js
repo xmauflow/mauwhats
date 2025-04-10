@@ -760,36 +760,75 @@ async function processCommand(bot, msg, sender) {
     if (isAdmin) {
         if (command.startsWith('.addad')) {
             // Format: .addad <type> <title> | <content> | <priority> | <days_active>
-            const parts = command.slice(7).split('|').map(p => p.trim());
+            const fullCommand = command.slice(7).trim(); // Hapus '.addad '
+            const parts = fullCommand.split('|').map(p => p.trim());
+            
             if (parts.length !== 4) {
                 await bot.sendMessage(sender, {
-                    text: ' Format: .addad <type> <title> | <content> | <priority> | <days_active>'
+                    text: '❌ Format salah!\n\nFormat yang benar:\n.addad <type> <title> | <content> | <priority> | <days_active>\n\n' +
+                        'Contoh:\n.addad start Selamat Datang | 🌟 Selamat datang di bot chat anonymous! | 5 | 30\n\n' +
+                        'Types yang tersedia: start, search, chat, end'
                 });
                 return true;
             }
 
             const [typeAndTitle, content, priority, daysActive] = parts;
             const [type, ...titleParts] = typeAndTitle.split(' ');
+            
+            // Validasi type
+            const validTypes = ['start', 'search', 'chat', 'end'];
+            if (!validTypes.includes(type.toLowerCase())) {
+                await bot.sendMessage(sender, {
+                    text: '❌ Type tidak valid!\n\nType yang tersedia:\nstart, search, chat, end'
+                });
+                return true;
+            }
+            
             const title = titleParts.join(' ');
+            
+            // Validasi priority
+            const priorityNum = parseInt(priority);
+            if (isNaN(priorityNum) || priorityNum < 1 || priorityNum > 10) {
+                await bot.sendMessage(sender, {
+                    text: '❌ Priority harus berupa angka antara 1-10'
+                });
+                return true;
+            }
+            
+            // Validasi days_active
+            const days = parseInt(daysActive);
+            if (isNaN(days) || days < 1) {
+                await bot.sendMessage(sender, {
+                    text: '❌ days_active harus berupa angka positif'
+                });
+                return true;
+            }
 
             const now = new Date();
             const endDate = new Date();
-            endDate.setDate(endDate.getDate() + parseInt(daysActive));
+            endDate.setDate(endDate.getDate() + days);
 
             const adData = {
-                type,
+                type: type.toLowerCase(),
                 title,
                 content,
-                priority: parseInt(priority),
+                priority: priorityNum,
                 active: true,
                 startDate: now,
                 endDate: endDate
             };
 
-            const success = await AdvertiseManager.addAdvertisement(adData);
-            await bot.sendMessage(sender, {
-                text: success ? ' Advertisement added successfully!' : ' Failed to add advertisement'
-            });
+            try {
+                const success = await AdvertiseManager.addAdvertisement(adData);
+                await bot.sendMessage(sender, {
+                    text: success ? '✅ Iklan berhasil ditambahkan!' : '❌ Gagal menambahkan iklan'
+                });
+            } catch (error) {
+                console.error('[Error] Failed to add advertisement:', error);
+                await bot.sendMessage(sender, {
+                    text: '❌ Terjadi kesalahan saat menambahkan iklan'
+                });
+            }
             return true;
         }
         
