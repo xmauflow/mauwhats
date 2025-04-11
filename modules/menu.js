@@ -324,19 +324,187 @@ async function handleSendPP(bot, msg, sender) {
  */
 async function relayMessage(bot, msg, sender) {
     try {
-        const user = await database.findOne(COLLECTION_NAME, {
+        // Check if user is in a chat
+        const user = await database.findOne(COLLECTION_NAME, { 
             id: sender,
             status: 'chatting'
         });
 
         if (!user || !user.partner) {
-            return false;
+            return false; // Not in a chat, don't relay
         }
 
-        // Forward message to partner
-        await bot.sendMessage(user.partner, msg.message);
-        return true;
-
+        // Get the message content
+        const messageContent = msg.message;
+        const partnerId = user.partner;
+        
+        // Handle different message types
+        try {
+            if (messageContent.conversation) {
+                // Simple text message
+                await bot.sendMessage(partnerId, { 
+                    text: messageContent.conversation 
+                });
+                return true;
+            } 
+            else if (messageContent.extendedTextMessage) {
+                // Extended text message
+                await bot.sendMessage(partnerId, { 
+                    text: messageContent.extendedTextMessage.text 
+                });
+                return true;
+            }
+            else if (messageContent.imageMessage) {
+                // Image message
+                try {
+                    const imageBuffer = await downloadMediaMessage(
+                        msg,
+                        'buffer',
+                        {},
+                        { 
+                            logger: console,
+                            reuploadRequest: bot.updateMediaMessage 
+                        }
+                    );
+                    
+                    await bot.sendMessage(partnerId, { 
+                        image: imageBuffer,
+                        caption: messageContent.imageMessage.caption || '',
+                        mimetype: messageContent.imageMessage.mimetype
+                    });
+                    return true;
+                } catch (mediaError) {
+                    console.error('[Relay] Failed to download/send image:', mediaError);
+                    await bot.sendMessage(partnerId, { 
+                        text: '📷 [Gambar tidak dapat diteruskan]'
+                    });
+                    return false;
+                }
+            }
+            else if (messageContent.videoMessage) {
+                // Video message
+                try {
+                    const videoBuffer = await downloadMediaMessage(
+                        msg,
+                        'buffer',
+                        {},
+                        { 
+                            logger: console,
+                            reuploadRequest: bot.updateMediaMessage 
+                        }
+                    );
+                    
+                    await bot.sendMessage(partnerId, { 
+                        video: videoBuffer,
+                        caption: messageContent.videoMessage.caption || '',
+                        mimetype: messageContent.videoMessage.mimetype
+                    });
+                    return true;
+                } catch (mediaError) {
+                    console.error('[Relay] Failed to download/send video:', mediaError);
+                    await bot.sendMessage(partnerId, { 
+                        text: '🎥 [Video tidak dapat diteruskan]'
+                    });
+                    return false;
+                }
+            }
+            else if (messageContent.audioMessage) {
+                // Audio/voice message
+                try {
+                    const audioBuffer = await downloadMediaMessage(
+                        msg,
+                        'buffer',
+                        {},
+                        { 
+                            logger: console,
+                            reuploadRequest: bot.updateMediaMessage 
+                        }
+                    );
+                    
+                    await bot.sendMessage(partnerId, { 
+                        audio: audioBuffer,
+                        mimetype: messageContent.audioMessage.mimetype,
+                        ptt: messageContent.audioMessage.ptt || false
+                    });
+                    return true;
+                } catch (mediaError) {
+                    console.error('[Relay] Failed to download/send audio:', mediaError);
+                    await bot.sendMessage(partnerId, { 
+                        text: '🎵 [Pesan suara tidak dapat diteruskan]'
+                    });
+                    return false;
+                }
+            }
+            else if (messageContent.stickerMessage) {
+                // Sticker message
+                try {
+                    const stickerBuffer = await downloadMediaMessage(
+                        msg,
+                        'buffer',
+                        {},
+                        { 
+                            logger: console,
+                            reuploadRequest: bot.updateMediaMessage 
+                        }
+                    );
+                    
+                    await bot.sendMessage(partnerId, { 
+                        sticker: stickerBuffer
+                    });
+                    return true;
+                } catch (mediaError) {
+                    console.error('[Relay] Failed to download/send sticker:', mediaError);
+                    await bot.sendMessage(partnerId, { 
+                        text: '🌟 [Stiker tidak dapat diteruskan]'
+                    });
+                    return false;
+                }
+            }
+            else if (messageContent.documentMessage) {
+                // Document message
+                try {
+                    const docBuffer = await downloadMediaMessage(
+                        msg,
+                        'buffer',
+                        {},
+                        { 
+                            logger: console,
+                            reuploadRequest: bot.updateMediaMessage 
+                        }
+                    );
+                    
+                    await bot.sendMessage(partnerId, { 
+                        document: docBuffer,
+                        mimetype: messageContent.documentMessage.mimetype,
+                        fileName: messageContent.documentMessage.fileName || 'document'
+                    });
+                    return true;
+                } catch (mediaError) {
+                    console.error('[Relay] Failed to download/send document:', mediaError);
+                    await bot.sendMessage(partnerId, { 
+                        text: '📄 [Dokumen tidak dapat diteruskan]'
+                    });
+                    return false;
+                }
+            }
+            else {
+                console.log('[Relay] Unsupported message type:', Object.keys(messageContent));
+                
+                // Notify sender that this message type is not supported
+                await bot.sendMessage(sender, {
+                    text: '❗ Tipe pesan ini tidak dapat diteruskan ke partner Anda.'
+                });
+                return false;
+            }
+        } catch (deliveryError) {
+            console.error('[Relay] Message delivery failed:', deliveryError);
+            
+            // Notify sender of delivery failure
+            await bot.sendMessage(sender, {
+                text: '❌ Pesan tidak dapat diteruskan ke partner Anda. Silakan coba lagi.'
+            });
+            return false;
+        }
     } catch (error) {
         console.error('[Relay] Error:', error);
         return false;
