@@ -316,6 +316,191 @@ async function handleSendPP(bot, msg, sender) {
     }
 }
 
+/**
+ * Handle message relay between anonymous chat partners
+ * @param {Object} bot - The WhatsApp bot instance
+ * @param {Object} msg - The message object
+ * @param {String} sender - The sender's ID
+ */
+async function relayMessage(bot, msg, sender) {
+    try {
+        // Check if user is in a chat
+        const user = await database.findOne(COLLECTION_NAME, { 
+            id: sender,
+            status: 'chatting'
+        });
+
+        if (!user || !user.partner) {
+            return false; // Not in a chat, don't relay
+        }
+
+        // Get the message content
+        const messageContent = msg.message;
+        const partnerId = user.partner;
+
+        // Function to handle sending of different message types
+        const sendMessage = async (messageType, content) => {
+            try {
+                await bot.sendMessage(partnerId, content);
+                return true;
+            } catch (error) {
+                console.error(`[Relay] Failed to send ${messageType}:`, error);
+                await bot.sendMessage(sender, {
+                    text: `❌ Failed to send ${messageType} to your partner. Please try again.`
+                });
+                return false;
+            }
+        };
+
+        // Handle different message types
+        if (messageContent.conversation) {
+            // Simple text message
+            return await sendMessage('text message', { text: messageContent.conversation });
+        } 
+        else if (messageContent.extendedTextMessage) {
+            // Extended text message
+            return await sendMessage('extended text message', { text: messageContent.extendedTextMessage.text });
+        }
+        else if (messageContent.imageMessage) {
+            // Image message
+            try {
+                const imageBuffer = await downloadMediaMessage(
+                    msg,
+                    'buffer',
+                    {},
+                    { 
+                        logger: console,
+                        reuploadRequest: bot.updateMediaMessage 
+                    }
+                );
+                
+                return await sendMessage('image message', { 
+                    image: imageBuffer,
+                    caption: messageContent.imageMessage.caption || ''
+                });
+            } catch (mediaError) {
+                console.error('[Relay] Failed to download/send image:', mediaError);
+                await bot.sendMessage(sender, { 
+                    text: '📷 [Image could not be relayed]'
+                });
+                return false;
+            }
+        }
+        else if (messageContent.videoMessage) {
+            // Video message
+            try {
+                const videoBuffer = await downloadMediaMessage(
+                    msg,
+                    'buffer',
+                    {},
+                    { 
+                        logger: console,
+                        reuploadRequest: bot.updateMediaMessage 
+                    }
+                );
+                
+                return await sendMessage('video message', { 
+                    video: videoBuffer,
+                    caption: messageContent.videoMessage.caption || '',
+                    mimetype: messageContent.videoMessage.mimetype
+                });
+            } catch (mediaError) {
+                console.error('[Relay] Failed to download/send video:', mediaError);
+                await bot.sendMessage(sender, { 
+                    text: '🎥 [Video could not be relayed]'
+                });
+                return false;
+            }
+        }
+        else if (messageContent.audioMessage) {
+            // Audio/voice message
+            try {
+                const audioBuffer = await downloadMediaMessage(
+                    msg,
+                    'buffer',
+                    {},
+                    { 
+                        logger: console,
+                        reuploadRequest: bot.updateMediaMessage 
+                    }
+                );
+                
+                return await sendMessage('audio message', { 
+                    audio: audioBuffer,
+                    mimetype: messageContent.audioMessage.mimetype,
+                    ptt: messageContent.audioMessage.ptt || false
+                });
+            } catch (mediaError) {
+                console.error('[Relay] Failed to download/send audio:', mediaError);
+                await bot.sendMessage(sender, { 
+                    text: '🎵 [Audio message could not be relayed]'
+                });
+                return false;
+            }
+        }
+        else if (messageContent.stickerMessage) {
+            // Sticker message
+            try {
+                const stickerBuffer = await downloadMediaMessage(
+                    msg,
+                    'buffer',
+                    {},
+                    { 
+                        logger: console,
+                        reuploadRequest: bot.updateMediaMessage 
+                    }
+                );
+                
+                return await sendMessage('sticker message', { 
+                    sticker: stickerBuffer
+                });
+            } catch (mediaError) {
+                console.error('[Relay] Failed to download/send sticker:', mediaError);
+                await bot.sendMessage(sender, { 
+                    text: '🌟 [Sticker could not be relayed]'
+                });
+                return false;
+            }
+        }
+        else if (messageContent.documentMessage) {
+            // Document message
+            try {
+                const docBuffer = await downloadMediaMessage(
+                    msg,
+                    'buffer',
+                    {},
+                    { 
+                        logger: console,
+                        reuploadRequest: bot.updateMediaMessage 
+                    }
+                );
+                
+                return await sendMessage('document message', { 
+                    document: docBuffer,
+                    mimetype: messageContent.documentMessage.mimetype,
+                    fileName: messageContent.documentMessage.fileName || 'document'
+                });
+            } catch (mediaError) {
+                console.error('[Relay] Failed to download/send document:', mediaError);
+                await bot.sendMessage(sender, { 
+                    text: '📄 [Document could not be relayed]'
+                });
+                return false;
+            }
+        } else {
+            console.log('[Relay] Unsupported message type:', Object.keys(messageContent));
+            
+            // Notify sender that this message type is not supported
+            await bot.sendMessage(sender, {
+                text: '❗ This message type could not be relayed to your partner.'
+            });
+            return false;
+        }
+    } catch (error) {
+        console.error('[Relay] Error:', error);
+        return false;
+    }
+}
 
 /**
  * Process any pending messages in the queue
@@ -687,6 +872,7 @@ async function sendHelpMessage(bot, msg) {
 // Export the module functions
 const anonymousChat = {
     processCommand,
+    relayMessage,
     sendHelpMessage,
     initializeCollections,
     processMessageQueue

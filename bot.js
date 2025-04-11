@@ -59,6 +59,7 @@ function setupMessageHandler(bot) {
 
         if (body) {
             await handleCommand(bot, msg, body, from);
+            await handleChatMessage(bot, msg, body, from);
         }
     });
 }
@@ -114,11 +115,56 @@ async function handleCommand(bot, msg, body, from) {
     }
 }
 
+async function handleChatMessage(bot, msg, body, from) {
+    if (!body.startsWith('.') && !body.startsWith('/')) {
+        try {
+            const relayed = await anonymousChat.relayMessage(bot, msg, from);
+            if (relayed) {
+                console.log('[Chat] Message relayed successfully');
+            }
+        } catch (error) {
+            console.error('[Error] Message relay failed:', error);
+        }
+    }
+}
+
+async function sendMenuMessage(bot, from) {
+    const menuMessage = `*Anonymous Chat Bot*\n\n` +
+        `Chat with random people anonymously!\n\n` +
+        `*Available Commands:*\n` +
+        `*.search* - Find a chat partner\n` +
+        `*.next* - Find a new partner\n` +
+        `*.stop* - End the chat\n` +
+        `*.sendpp* - Share your profile picture\n\n` +
+        `Start chatting now! Type *.search* to begin.`;
+
+    await bot.sendMessage(from, { text: menuMessage });
+    console.log('[Menu] Sent successfully');
+}
 
 function extractMessageBody(msg) {
-    return (msg.message.conversation) ? msg.message.conversation :
-           (msg.message.extendedTextMessage?.text) ? msg.message.extendedTextMessage.text :
-           (msg.message.imageMessage?.caption) ? msg.message.imageMessage.caption : '';
+    const messageTypes = msg.message;
+    if (!messageTypes) return '';
+
+    // Text messages
+    if (messageTypes.conversation) return messageTypes.conversation;
+    if (messageTypes.extendedTextMessage?.text) return messageTypes.extendedTextMessage.text;
+    
+    // Media messages with captions
+    if (messageTypes.imageMessage?.caption) return messageTypes.imageMessage.caption;
+    if (messageTypes.videoMessage?.caption) return messageTypes.videoMessage.caption;
+    if (messageTypes.documentMessage?.caption) return messageTypes.documentMessage.caption;
+    
+    // Sticker messages
+    if (messageTypes.stickerMessage) return 'Sticker';
+    
+    // Other media types
+    if (messageTypes.audioMessage) return 'Audio';
+    if (messageTypes.videoMessage) return 'Video';
+    if (messageTypes.imageMessage) return 'Image';
+    if (messageTypes.documentMessage) return 'Document';
+    
+    return '';
 }
 
 function createModifiedMessage(msg, body) {
