@@ -115,32 +115,6 @@ async function handleCommand(bot, msg, body, from) {
     }
 }
 
-async function handleChatMessage(bot, msg, body, from) {
-    if (!body.startsWith('.') && !body.startsWith('/')) {
-        try {
-            const relayed = await anonymousChat.relayMessage(bot, msg, from);
-            if (relayed) {
-                console.log('[Chat] Message relayed successfully');
-            }
-        } catch (error) {
-            console.error('[Error] Message relay failed:', error);
-        }
-    }
-}
-
-async function sendMenuMessage(bot, from) {
-    const menuMessage = `*Anonymous Chat Bot*\n\n` +
-        `Chat with random people anonymously!\n\n` +
-        `*Available Commands:*\n` +
-        `*.search* - Find a chat partner\n` +
-        `*.next* - Find a new partner\n` +
-        `*.stop* - End the chat\n` +
-        `*.sendpp* - Share your profile picture\n\n` +
-        `Start chatting now! Type *.search* to begin.`;
-
-    await bot.sendMessage(from, { text: menuMessage });
-    console.log('[Menu] Sent successfully');
-}
 
 function extractMessageBody(msg) {
     return (msg.message.conversation) ? msg.message.conversation :
