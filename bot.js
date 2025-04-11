@@ -59,7 +59,6 @@ function setupMessageHandler(bot) {
 
         if (body) {
             await handleCommand(bot, msg, body, from);
-            await handleChatMessage(bot, msg, body, from);
         }
     });
 }

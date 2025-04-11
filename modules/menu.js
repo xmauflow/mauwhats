@@ -687,7 +687,6 @@ async function sendHelpMessage(bot, msg) {
 // Export the module functions
 const anonymousChat = {
     processCommand,
-    relayMessage,
     sendHelpMessage,
     initializeCollections,
     processMessageQueue
