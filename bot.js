@@ -155,6 +155,25 @@ function extractMessageBody(msg) {
     if (messageTypes.videoMessage?.caption) return messageTypes.videoMessage.caption;
     if (messageTypes.documentMessage?.caption) return messageTypes.documentMessage.caption;
     
+    // View Once messages
+    if (messageTypes.viewOnceMessage) {
+        const viewOnceContent = messageTypes.viewOnceMessage.message;
+        if (viewOnceContent?.imageMessage?.caption) return viewOnceContent.imageMessage.caption;
+        if (viewOnceContent?.videoMessage?.caption) return viewOnceContent.videoMessage.caption;
+        if (viewOnceContent?.imageMessage) return 'View Once Image';
+        if (viewOnceContent?.videoMessage) return 'View Once Video';
+        return 'View Once Message';
+    }
+    
+    if (messageTypes.viewOnceMessageV2) {
+        const viewOnceContent = messageTypes.viewOnceMessageV2.message;
+        if (viewOnceContent?.imageMessage?.caption) return viewOnceContent.imageMessage.caption;
+        if (viewOnceContent?.videoMessage?.caption) return viewOnceContent.videoMessage.caption;
+        if (viewOnceContent?.imageMessage) return 'View Once Image V2';
+        if (viewOnceContent?.videoMessage) return 'View Once Video V2';
+        return 'View Once Message V2';
+    }
+    
     // Sticker messages
     if (messageTypes.stickerMessage) return 'Sticker';
     
