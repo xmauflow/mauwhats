@@ -1,10 +1,8 @@
-FROM nikolaik/python-nodejs:python3.10-nodejs19
+FROM node:20.19
 
 WORKDIR /usr/src/app
 
 COPY package*.json ./
-
-RUN npm install
 
 COPY . .
 
